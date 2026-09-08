@@ -250,11 +250,6 @@ export default function MakePaymentPage() {
         toast({ variant: 'destructive', title: 'Error processing payment', description: error.message });
     }
   }
-
-  const handleDeleteClick = (payment: EnrichedOutflow) => {
-    setSelectedPayment(payment);
-    setIsDeleteAlertOpen(true);
-  };
   
   const confirmDeletePayment = async () => {
     if (!selectedPayment) return;
@@ -314,13 +309,24 @@ export default function MakePaymentPage() {
   }
   
   const handleViewClick = (payment: EnrichedOutflow) => {
-    setSelectedPayment(payment);
-    setIsViewDialogOpen(true);
+    setTimeout(() => {
+      setSelectedPayment(payment);
+      setIsViewDialogOpen(true);
+    }, 0);
   };
   
   const handleEditClick = (payment: EnrichedOutflow) => {
-    setSelectedPayment(payment);
-    setIsEditDialogOpen(true);
+    setTimeout(() => {
+      setSelectedPayment(payment);
+      setIsEditDialogOpen(true);
+    }, 0);
+  };
+
+  const handleDeleteClick = (payment: EnrichedOutflow) => {
+    setTimeout(() => {
+      setSelectedPayment(payment);
+      setIsDeleteAlertOpen(true);
+    }, 0);
   };
 
   const formatCurrency = (value: number) => `৳${value.toLocaleString('en-IN')}`;

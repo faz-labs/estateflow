@@ -19,6 +19,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { useFirestore, useCollection, useMemoFirebase, addDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, query, doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { useUserProfile } from '@/hooks/use-user-profile';
 import { useState, useMemo, useCallback } from 'react';
 import type { OperatingCost, OperatingCostItem } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -81,6 +82,7 @@ const ITEMS_PER_PAGE = 10;
 export default function OperatingCostPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { tenantId } = useUserProfile();
   const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false);
   
   // Data for forms and list
@@ -118,6 +120,7 @@ export default function OperatingCostPage() {
         id: newCostRef.id,
         ...data,
         date: new Date(data.date).toISOString(),
+        tenantId: tenantId || 'default_workspace',
       };
       
       addDocumentNonBlocking(costsCollection, newCost);

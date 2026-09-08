@@ -19,6 +19,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { useFirestore, useCollection, useMemoFirebase, addDocumentNonBlocking, deleteDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
 import { collection, query, doc, writeBatch, getDocs, runTransaction } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { useUserProfile } from '@/hooks/use-user-profile';
 import { useState, useEffect, useMemo } from 'react';
 import type { Project, Vendor, ExpenseItem, Expense, Counter } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -95,6 +96,7 @@ const ITEMS_PER_PAGE = 10;
 function AddItemForm({ setDialogOpen }: { setDialogOpen: (open: boolean) => void }) {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { tenantId } = useUserProfile();
   const form = useForm<AddItemFormValues>({
     resolver: zodResolver(addItemFormSchema),
     defaultValues: { name: '' },
@@ -106,7 +108,8 @@ function AddItemForm({ setDialogOpen }: { setDialogOpen: (open: boolean) => void
       const newItemRef = doc(itemsCollection);
       addDocumentNonBlocking(itemsCollection, {
         id: newItemRef.id,
-        name: data.name
+        name: data.name,
+        tenantId: tenantId || 'default_workspace',
       });
       toast({ title: 'Item Added', description: `${data.name} has been added.` });
       form.reset();
@@ -146,6 +149,7 @@ function AddItemForm({ setDialogOpen }: { setDialogOpen: (open: boolean) => void
 export default function AddExpensePage() {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { tenantId } = useUserProfile();
   const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false);
   const [isDataDirty, setIsDataDirty] = useState(true);
   const [expenses, setExpenses] = useState<EnrichedExpense[]>([]);
@@ -265,6 +269,7 @@ export default function AddExpensePage() {
         description: data.description,
         paidAmount: 0, // Initialize paidAmount to 0
         status: 'Unpaid', // Initialize status to Unpaid
+        tenantId: tenantId || 'default_workspace',
       };
       
       // Use a non-blocking add to create the expense document
@@ -289,8 +294,10 @@ export default function AddExpensePage() {
   }
 
   const handleDeleteClick = (expense: EnrichedExpense) => {
-    setSelectedExpense(expense);
-    setIsDeleteAlertOpen(true);
+    setTimeout(() => {
+      setSelectedExpense(expense);
+      setIsDeleteAlertOpen(true);
+    }, 0);
   };
   
   const confirmDeleteExpense = () => {
@@ -308,13 +315,17 @@ export default function AddExpensePage() {
   };
   
   const handleEditClick = (expense: EnrichedExpense) => {
-    setSelectedExpense(expense);
-    setIsEditDialogOpen(true);
+    setTimeout(() => {
+      setSelectedExpense(expense);
+      setIsEditDialogOpen(true);
+    }, 0);
   };
 
   const handleViewClick = (expense: EnrichedExpense) => {
-    setSelectedExpense(expense);
-    setIsViewDialogOpen(true);
+    setTimeout(() => {
+      setSelectedExpense(expense);
+      setIsViewDialogOpen(true);
+    }, 0);
   };
 
   const filteredExpenses = useMemo(() => {

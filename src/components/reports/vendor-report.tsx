@@ -26,7 +26,7 @@ export function VendorReport() {
       const [vendorsSnap, expensesSnap, outflowsSnap] = await Promise.all([
         getDocs(vendorsQuery),
         getDocs(expensesQuery),
-        getDocs(outflowsSnap),
+        getDocs(outflowsQuery),
       ]);
 
       const vendors = vendorsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Vendor));

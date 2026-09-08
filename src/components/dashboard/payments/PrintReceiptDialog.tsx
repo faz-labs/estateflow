@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Receipt } from '@/components/dashboard/receipt';
-import { Printer, Save, Loader2 } from 'lucide-react';
+import { Printer, Save, Loader2, X } from 'lucide-react';
 import type { EnrichedTransaction } from '@/app/dashboard/add-payment/page';
 import type { Customer, Project } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
@@ -36,94 +36,109 @@ export function PrintReceiptDialog({
 }: PrintReceiptDialogProps) {
   const receiptRef = useRef<HTMLDivElement>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const { toast } = useToast();
 
   const handlePrint = () => {
-    if (!receiptRef.current) return;
-    const printContent = receiptRef.current.innerHTML;
-    const printWindow = window.open('', '_blank', 'height=800,width=800');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Receipt</title>');
-      printWindow.document.write(`
-        <style>
-          @media print { 
-            @page { size: A4; margin: 0; } 
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          }
-          /* Basic Styles */
-          body { font-family: 'Times New Roman', Times, serif; color: #1f2937; }
-          .bg-white { background-color: #ffffff; }
-          .text-gray-800 { color: #1f2937; }
-          
-          /* Layout */
-          .p-8 { padding: 2rem; }
-          .w-\\[210mm\\] { width: 210mm; }
-          .min-h-\\[297mm\\] { min-height: 297mm; }
-          .mx-auto { margin-left: auto; margin-right: auto; }
-          .flex { display: flex; }
-          .flex-col { flex-direction: column; }
-          .flex-grow { flex-grow: 1; }
-          .justify-between { justify-content: space-between; }
-          .justify-center { justify-content: center; }
-          .items-start { align-items: flex-start; }
-          .items-center { align-items: center; }
-          .items-end { align-items: flex-end; }
-          .items-baseline { align-items: baseline; }
-          .w-1\\/2 { width: 50%; }
-          .w-1\\/3 { width: 33.333333%; }
-          .w-48 { width: 12rem; }
-          .w-28 { width: 7rem; }
-          .shrink-0 { flex-shrink: 0; }
-          .space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: 1.25rem; }
+    if (!receiptRef.current) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Receipt content is not ready.' });
+      return;
+    }
 
-          /* Typography */
-          .text-right { text-align: right; }
-          .text-center { text-align: center; }
-          .text-3xl { font-size: 1.875rem; }
-          .text-lg { font-size: 1.125rem; }
-          .text-sm { font-size: 0.875rem; }
-          .text-xs { font-size: 0.75rem; }
-          .font-bold { font-weight: 700; }
-          .font-semibold { font-weight: 600; }
-          .font-medium { font-weight: 500; }
-          .uppercase { text-transform: uppercase; }
-          .capitalize { text-transform: capitalize; }
-          .tracking-widest { letter-spacing: 0.1em; }
+    setIsPrinting(true);
 
-          /* Sizing & Spacing */
-          .pb-1 { padding-bottom: 0.25rem; }
-          .pt-2 { padding-top: 0.5rem; }
-          .pt-8 { padding-top: 2rem; }
-          .mb-10 { margin-bottom: 2.5rem; }
-          .mb-6 { margin-bottom: 1.5rem; }
-          .mb-4 { margin-bottom: 1rem; }
-          .mt-4 { margin-top: 1rem; }
-          .mt-auto { margin-top: auto; }
-          .pr-4 { padding-right: 1rem; }
-          
-          /* Borders & Styling */
-          .border-b { border-bottom-width: 1px; }
-          .border-t { border-top-width: 1px; }
-          .border-black { border-color: #000000; }
-          .border-dotted { border-style: dotted; }
-          .border-gray-400 { border-color: #9ca3af; }
-          .text-primary { color: hsl(222.2, 47.4%, 11.2%); }
-          .bg-gray-100 { background-color: #f3f4f6; }
-          .rounded-lg { border-radius: 0.5rem; }
-          .p-2 { padding: 0.5rem; }
-          .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
-          .h-24 { height: 6rem; }
-        </style>
+    try {
+      // Remove any leftover iframe
+      const oldFrame = document.getElementById('estateflow-print-frame');
+      if (oldFrame) {
+        document.body.removeChild(oldFrame);
+      }
+
+      // Create an invisible iframe for printing (bypasses browser popup blockers 100%)
+      const iframe = document.createElement('iframe');
+      iframe.id = 'estateflow-print-frame';
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
+
+      const iframeDoc = iframe.contentWindow?.document;
+      if (!iframeDoc || !iframe.contentWindow) {
+        throw new Error('Unable to access print frame.');
+      }
+
+      const printContent = receiptRef.current.innerHTML;
+
+      iframeDoc.open();
+      iframeDoc.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Receipt_${payment.receiptId || 'Invoice'}</title>
+            <style>
+              @page { 
+                size: A4; 
+                margin: 10mm; 
+              }
+              * {
+                box-sizing: border-box;
+              }
+              body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                color: #0f172a;
+                background-color: #ffffff;
+                margin: 0;
+                padding: 0;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              img {
+                max-width: 100%;
+                height: auto;
+              }
+              table {
+                width: 100%;
+                border-collapse: collapse;
+              }
+            </style>
+            <link rel="stylesheet" href="/globals.css" />
+          </head>
+          <body>
+            ${printContent}
+          </body>
+        </html>
       `);
-      printWindow.document.write('</head><body>');
-      printWindow.document.write(printContent);
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
+      iframeDoc.close();
+
+      // Allow DOM and styles to process before invoking print dialog
       setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 250);
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (e) {
+          console.error('Print execution error:', e);
+        } finally {
+          setIsPrinting(false);
+          // Clean up frame after print
+          setTimeout(() => {
+            if (iframe.parentNode) {
+              document.body.removeChild(iframe);
+            }
+          }, 2000);
+        }
+      }, 400);
+
+    } catch (error: any) {
+      console.error('Printing error:', error);
+      setIsPrinting(false);
+      toast({
+        variant: 'destructive',
+        title: 'Print Failed',
+        description: error.message || 'Could not launch print dialog.',
+      });
     }
   };
 
@@ -138,11 +153,14 @@ export function PrintReceiptDialog({
 
     try {
       const canvas = await html2canvas(node, {
-        scale: 2, 
+        scale: 2,
         useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#ffffff',
+        logging: false,
       });
       
-      const imgData = canvas.toDataURL('image/jpeg', 0.8);
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
       
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -164,14 +182,19 @@ export function PrintReceiptDialog({
       const y = (pdfHeight - finalImgHeight) / 2;
       
       pdf.addImage(imgData, 'JPEG', x, y, finalImgWidth, finalImgHeight);
-      pdf.save(`Receipt_${payment.receiptId}.pdf`);
+      pdf.save(`Receipt_${payment.receiptId || 'Payment'}.pdf`);
 
-    } catch (error) {
+      toast({
+        title: 'PDF Downloaded',
+        description: `Receipt_${payment.receiptId}.pdf has been saved.`,
+      });
+
+    } catch (error: any) {
       console.error('Error generating PDF:', error);
       toast({
         variant: 'destructive',
         title: 'PDF Generation Failed',
-        description: 'An unexpected error occurred while creating the PDF.',
+        description: error.message || 'An unexpected error occurred while creating the PDF.',
       });
     } finally {
       setIsSaving(false);
@@ -179,16 +202,21 @@ export function PrintReceiptDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl p-0">
-        <DialogHeader className="p-6 pb-2">
-          <DialogTitle>Payment Receipt</DialogTitle>
-          <DialogDescription>
-            Review the receipt below. You can print it or save it as a PDF.
-          </DialogDescription>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-4xl p-0 overflow-hidden">
+        <DialogHeader className="p-6 pb-3 border-b bg-slate-50/50">
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle className="text-xl font-bold tracking-tight">Payment Receipt / Invoice</DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                Receipt #{payment.receiptId} &bull; Generated for {customer?.fullName || payment.customerName || 'Customer'}
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
-        <ScrollArea className="max-h-[70vh]">
-          <div ref={receiptRef}>
+
+        <ScrollArea className="max-h-[72vh] p-6 bg-slate-100/60 dark:bg-slate-900/60">
+          <div ref={receiptRef} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mx-auto">
             <Receipt
               payment={payment}
               customer={customer}
@@ -196,17 +224,21 @@ export function PrintReceiptDialog({
             />
           </div>
         </ScrollArea>
-        <DialogFooter className="p-4 border-t bg-muted">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Close
+
+        <DialogFooter className="p-4 border-t bg-slate-50 dark:bg-slate-900 flex flex-row items-center justify-between gap-2 sm:justify-between">
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            <X className="mr-1.5 h-4 w-4" /> Close
           </Button>
-          <Button type="button" onClick={handleSavePdf} disabled={isSaving}>
-            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            {isSaving ? 'Saving...' : 'Save as PDF'}
-          </Button>
-          <Button type="button" onClick={handlePrint}>
-            <Printer className="mr-2 h-4 w-4" /> Print
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={handleSavePdf} disabled={isSaving}>
+              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
+              {isSaving ? 'Generating PDF...' : 'Save as PDF'}
+            </Button>
+            <Button type="button" size="sm" onClick={handlePrint} disabled={isPrinting}>
+              {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-1.5 h-4 w-4" />}
+              {isPrinting ? 'Printing...' : 'Print Receipt'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

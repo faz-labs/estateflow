@@ -45,12 +45,13 @@ import {
     DropdownMenuTrigger,
   } from "@/components/ui/dropdown-menu"
 import { useCollection, useFirestore, useMemoFirebase, deleteDocumentNonBlocking } from '@/firebase';
-import { collection, query, doc } from 'firebase/firestore';
+import { collection, query, doc, where } from 'firebase/firestore';
 import type { Vendor } from '@/lib/types';
 import { AddVendorForm } from '@/components/dashboard/vendors/add-vendor-form';
 import { EditVendorForm } from '@/components/dashboard/vendors/edit-vendor-form';
 import { useState, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { useUserProfile } from '@/hooks/use-user-profile';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { exportToCsv } from '@/lib/csv';
@@ -60,9 +61,17 @@ const ITEMS_PER_PAGE = 15;
 export default function VendorsPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { tenantId } = useUserProfile();
+
   const vendorsQuery = useMemoFirebase(
-    () => query(collection(firestore, 'vendors')),
-    [firestore]
+    () => {
+      if (!firestore) return null;
+      if (tenantId && tenantId !== 'default_workspace') {
+        return query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId));
+      }
+      return query(collection(firestore, 'vendors'));
+    },
+    [firestore, tenantId]
   );
   const { data: vendors, isLoading } = useCollection<Vendor>(vendorsQuery);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -71,30 +80,38 @@ export default function VendorsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
+  const [deletingVendor, setDeletingVendor] = useState<Vendor | null>(null);
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+
   const handleEditClick = (vendor: Vendor) => {
     setEditingVendor(vendor);
     setIsEditDialogOpen(true);
   };
   
-  const handleDeleteVendor = (vendorId: string) => {
-    const vendorRef = doc(firestore, 'vendors', vendorId);
+  const confirmDeleteVendor = () => {
+    if (!deletingVendor) return;
+    const vendorRef = doc(firestore, 'vendors', deletingVendor.id);
     deleteDocumentNonBlocking(vendorRef);
     toast({
         title: "Vendor Deleted",
-        description: "The vendor has been successfully deleted.",
+        description: `${deletingVendor.vendorName} has been successfully deleted.`,
     });
+    setIsDeleteAlertOpen(false);
+    setDeletingVendor(null);
   };
 
   const filteredVendors = useMemo(() => {
     if (!vendors) return [];
     const searchTerm = searchQuery.toLowerCase();
-    return vendors.filter(vendor =>
+    return vendors
+      .filter(v => !v.tenantId || v.tenantId === tenantId || (tenantId === 'default_workspace' && (!v.tenantId || v.tenantId === 'default_workspace')))
+      .filter(vendor =>
         vendor.vendorName.toLowerCase().includes(searchTerm) ||
         vendor.phoneNumber.toLowerCase().includes(searchTerm) ||
         vendor.enterpriseName.toLowerCase().includes(searchTerm) ||
         (vendor.details || '').toLowerCase().includes(searchTerm)
-    );
-  }, [vendors, searchQuery]);
+      );
+  }, [vendors, searchQuery, tenantId]);
 
   const totalPages = Math.ceil(filteredVendors.length / ITEMS_PER_PAGE);
   const paginatedVendors = filteredVendors.slice(
@@ -206,53 +223,42 @@ export default function VendorsPage() {
                         <TableCell>{vendor.enterpriseName}</TableCell>
                         <TableCell className="max-w-[200px] truncate">{vendor.details}</TableCell>
                         <TableCell className="text-right">
-                          <AlertDialog>
-                              <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" className="h-8 w-8 p-0">
-                                      <span className="sr-only">Open menu</span>
-                                      <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                  <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                  <DropdownMenuItem asChild>
-                                      <Link href={`/dashboard/vendors/${vendor.id}`}>
-                                          <Eye className="mr-2 h-4 w-4" />
-                                          View Details
-                                      </Link>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleEditClick(vendor)}>
-                                      <Pencil className="mr-2 h-4 w-4" />
-                                      Edit
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <AlertDialogTrigger asChild>
-                                      <DropdownMenuItem className="text-red-600">
-                                          <Trash2 className="mr-2 h-4 w-4" />
-                                          Delete
-                                      </DropdownMenuItem>
-                                  </AlertDialogTrigger>
-                                  </DropdownMenuContent>
-                              </DropdownMenu>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This action cannot be undone. This will permanently delete this vendor.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => handleDeleteVendor(vendor.id)}
-                                    className="bg-destructive hover:bg-destructive/90"
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-8 w-8 p-0">
+                                <span className="sr-only">Open menu</span>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuItem asChild>
+                                <Link href={`/dashboard/vendors/${vendor.id}`}>
+                                  <Eye className="mr-2 h-4 w-4" />
+                                  View Details
+                                </Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => {
+                                setTimeout(() => handleEditClick(vendor), 0);
+                              }}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-red-600"
+                                onSelect={() => {
+                                  setTimeout(() => {
+                                    setDeletingVendor(vendor);
+                                    setIsDeleteAlertOpen(true);
+                                  }, 0);
+                                }}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -294,6 +300,27 @@ export default function VendorsPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete vendor{' '}
+              <span className="font-semibold text-foreground">{deletingVendor?.vendorName}</span>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setIsDeleteAlertOpen(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteVendor}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

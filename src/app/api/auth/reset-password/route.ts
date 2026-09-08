@@ -1,0 +1,163 @@
+import { NextResponse } from 'next/server';
+import nodemailer from 'nodemailer';
+import crypto from 'crypto';
+import { adminAuth } from '@/lib/firebase-admin';
+
+export async function POST(request: Request) {
+  try {
+    const { email } = await request.json();
+
+    if (!email || typeof email !== 'string') {
+      return NextResponse.json(
+        { error: 'A valid email address is required.' },
+        { status: 400 }
+      );
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+    const smtpSecure = process.env.SMTP_SECURE === 'true';
+    const smtpFromName = process.env.SMTP_FROM_NAME || 'EstateFlow Support';
+    const smtpFromEmail = process.env.SMTP_FROM_EMAIL || smtpUser || 'noreply@remotizedit.online';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002';
+    const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+
+    // Verify SMTP settings are configured
+    if (
+      !smtpHost ||
+      !smtpUser ||
+      !smtpPass ||
+      smtpHost === 'mail.yourdomain.com' ||
+      smtpPass === 'your_password'
+    ) {
+      return NextResponse.json(
+        { 
+          success: false,
+          warning: 'Mailcow SMTP is not configured in .env.local.',
+          configured: false,
+        },
+        { status: 200 }
+      );
+    }
+
+    // Determine the branded reset URL:
+    // Option A: Try generating official Firebase oobCode via Admin SDK (suppresses Google's email!)
+    let resetUrl = '';
+
+    if (adminAuth) {
+      try {
+        const link = await adminAuth.generatePasswordResetLink(normalizedEmail);
+        const urlObj = new URL(link);
+        const oobCode = urlObj.searchParams.get('oobCode');
+        if (oobCode) {
+          resetUrl = `${appUrl}/reset-password?oobCode=${encodeURIComponent(oobCode)}&email=${encodeURIComponent(normalizedEmail)}`;
+        }
+      } catch (adminErr) {
+        console.warn('Admin SDK reset link attempt note (using custom token fallback):', adminErr);
+      }
+    }
+
+    // Option B: Fallback to custom secure token in Firestore
+    if (!resetUrl) {
+      const customToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = Date.now() + 1000 * 60 * 60; // 1 hour validity
+
+      if (projectId) {
+        try {
+          const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/password_resets/${customToken}`;
+          await fetch(docUrl, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: {
+                token: { stringValue: customToken },
+                email: { stringValue: normalizedEmail },
+                expiresAt: { integerValue: expiresAt.toString() },
+                used: { booleanValue: false },
+                createdAt: { stringValue: new Date().toISOString() },
+              },
+            }),
+          });
+        } catch (fsErr) {
+          console.warn('Failed to store custom reset token in Firestore:', fsErr);
+        }
+      }
+
+      resetUrl = `${appUrl}/reset-password?token=${customToken}&email=${encodeURIComponent(normalizedEmail)}`;
+    }
+
+    // Initialize Mailcow SMTP transporter
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+
+    // Branded HTML email template - NO Firebase or Google mentions!
+    const htmlMessage = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+            .container { max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 32px; }
+            .logo { font-size: 22px; font-weight: 800; color: #0f172a; margin-bottom: 20px; letter-spacing: -0.5px; }
+            .logo span { color: #d97706; }
+            .btn { display: inline-block; background-color: #0f172a; color: #ffffff !important; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; margin: 20px 0; }
+            .footer { font-size: 12px; color: #64748b; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 16px; line-height: 1.5; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="logo">Estate<span>Flow</span></div>
+            <h2 style="font-size: 18px; margin-top: 0;">Password Reset Request</h2>
+            <p>Hello,</p>
+            <p>We received a request to reset the password for your EstateFlow account associated with <strong>${normalizedEmail}</strong>.</p>
+            <p>Click the secure button below to set a new password on your domain:</p>
+            <p><a href="${resetUrl}" class="btn">Reset My Password</a></p>
+            <p style="font-size: 12px; color: #64748b;">If the button above does not work, copy and paste this link into your browser:<br><span style="word-break: break-all; color: #2563eb;">${resetUrl}</span></p>
+            <p style="font-size: 12px; color: #64748b;">This link is valid for 1 hour. If you did not request this, you can safely ignore this email.</p>
+            <div class="footer">
+              EstateFlow Enterprise Real Estate Platform &bull; Sent securely via Mailcow SMTP (${smtpFromEmail})
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    await transporter.sendMail({
+      from: `"${smtpFromName}" <${smtpFromEmail}>`,
+      to: normalizedEmail,
+      subject: 'EstateFlow: Reset Your Password',
+      text: `Hello,\n\nWe received a request to reset your EstateFlow password.\n\nPlease visit the following link to choose a new password:\n${resetUrl}\n\nThis link is valid for 1 hour.\n\nEstateFlow Support`,
+      html: htmlMessage,
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `A secure password reset link has been dispatched to ${normalizedEmail} via Mailcow SMTP.`,
+      configured: true,
+    });
+
+  } catch (error: any) {
+    console.error('Mailcow SMTP Send Error:', error);
+    return NextResponse.json(
+      { 
+        error: error.message || 'Failed to send reset email through Mailcow SMTP.',
+        details: error.code || 'SMTP_TRANSACTION_FAILED'
+      },
+      { status: 500 }
+    );
+  }
+}

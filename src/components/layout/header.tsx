@@ -21,6 +21,7 @@ import { SidebarNav } from './sidebar-nav';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth, useUser } from '@/firebase';
 import { signOut } from 'firebase/auth';
+import { NotificationBell } from './notification-bell';
 
 
 const getTitleFromPathname = (pathname: string) => {
@@ -66,6 +67,10 @@ export function Header() {
         <form className="ml-auto flex-1 sm:flex-initial">
           {/* Search can be added here if needed */}
         </form>
+
+        {/* Tenant Real-Time Notice Panel */}
+        <NotificationBell />
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="secondary" size="icon" className="rounded-full">

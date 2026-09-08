@@ -15,9 +15,10 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { useFirestore, addDocumentNonBlocking } from '@/firebase';
+import { useFirestore, setDocumentNonBlocking } from '@/firebase';
 import { collection, doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 const vendorFormSchema = z.object({
   vendorName: z.string().min(2, {
@@ -41,6 +42,7 @@ interface AddVendorFormProps {
 export function AddVendorForm({ setDialogOpen }: AddVendorFormProps) {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { tenantId } = useUserProfile();
   const form = useForm<VendorFormValues>({
     resolver: zodResolver(vendorFormSchema),
     defaultValues: {
@@ -59,9 +61,10 @@ export function AddVendorForm({ setDialogOpen }: AddVendorFormProps) {
       const newVendor = {
         id: newVendorRef.id,
         ...data,
+        tenantId: tenantId || 'default_workspace',
       };
 
-      addDocumentNonBlocking(vendorsCollection, newVendor);
+      setDocumentNonBlocking(newVendorRef, newVendor, { merge: true });
 
       toast({
         title: 'Vendor Added',

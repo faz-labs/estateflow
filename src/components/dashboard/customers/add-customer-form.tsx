@@ -14,9 +14,10 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { useFirestore, addDocumentNonBlocking } from '@/firebase';
+import { useFirestore, setDocumentNonBlocking } from '@/firebase';
 import { collection, doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 const customerFormSchema = z.object({
   fullName: z.string().min(2, {
@@ -42,6 +43,7 @@ interface AddCustomerFormProps {
 export function AddCustomerForm({ setDialogOpen }: AddCustomerFormProps) {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { tenantId } = useUserProfile();
   const form = useForm<CustomerFormValues>({
     resolver: zodResolver(customerFormSchema),
     defaultValues: {
@@ -60,9 +62,10 @@ export function AddCustomerForm({ setDialogOpen }: AddCustomerFormProps) {
       const newCustomer = {
         id: newCustomerRef.id,
         ...data,
+        tenantId: tenantId || 'default_workspace',
       };
 
-      addDocumentNonBlocking(customersCollection, newCustomer);
+      setDocumentNonBlocking(newCustomerRef, newCustomer, { merge: true });
 
       toast({
         title: 'Customer Added',

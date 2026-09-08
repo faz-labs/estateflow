@@ -1,8 +1,10 @@
+// Firebase configuration loaded strictly from environment variables (.env.local)
 export const firebaseConfig = {
-  "projectId": "studio-2621369784-a94b2",
-  "appId": "1:452904291416:web:b973ce82afc733a3b30e2d",
-  "apiKey": "AIzaSyCjmUWhqhIqDsOjr6hIlI_VGrPSE2Et6JQ",
-  "authDomain": "studio-2621369784-a94b2.firebaseapp.com",
-  "measurementId": "",
-  "messagingSenderId": "452904291416"
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "",
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "",
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "",
 };

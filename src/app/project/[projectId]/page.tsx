@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useFirestore } from '@/firebase';
 import {
   doc,
@@ -54,11 +54,11 @@ function StatCardSmall({ title, value }: { title: string; value: string }) {
 export default function ProjectDetailPage({
   params,
 }: {
-  params: { projectId: string };
+  params: Promise<{ projectId: string }>;
 }) {
   const firestore = useFirestore();
   const router = useRouter();
-  const { projectId } = params;
+  const { projectId } = use(params);
 
   const [project, setProject] = useState<Project | null>(null);
   const [enrichedFlats, setEnrichedFlats] = useState<EnrichedFlat[]>([]);

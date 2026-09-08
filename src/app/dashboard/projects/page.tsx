@@ -53,6 +53,7 @@ import { AddProjectForm } from '@/components/dashboard/projects/add-project-form
 import { EditProjectForm } from '@/components/dashboard/projects/edit-project-form';
 import { useState, useMemo, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { useUserProfile } from '@/hooks/use-user-profile';
 import { Input } from '@/components/ui/input';
 
 const ITEMS_PER_PAGE = 15;
@@ -60,11 +61,24 @@ const ITEMS_PER_PAGE = 15;
 export default function ProjectsPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { tenantId, tenant, tenantPlan, isSuperAdmin } = useUserProfile();
+
   const projectsQuery = useMemoFirebase(
-    () => query(collection(firestore, 'projects')),
-    [firestore]
+    () => {
+      if (!firestore) return null;
+      if (tenantId && tenantId !== 'default_workspace') {
+        return query(collection(firestore, 'projects'), where('tenantId', '==', tenantId));
+      }
+      return query(collection(firestore, 'projects'));
+    },
+    [firestore, tenantId]
   );
   const { data: projects, isLoading } = useCollection<Project>(projectsQuery);
+
+  const currentProjectCount = projects?.length || 0;
+  const maxAllowedProjects = tenant?.maxProjects || (tenantPlan === 'demo' ? 5 : tenantPlan === 'pro' ? 10 : 999999);
+  const isLimitReached = !isSuperAdmin && currentProjectCount >= maxAllowedProjects;
+
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -74,13 +88,17 @@ export default function ProjectsPage() {
   const [isAlertOpen, setIsAlertOpen] = useState(false);
 
   const openEditDialog = useCallback((project: Project) => {
-    setEditingProject(project);
-    setIsEditDialogOpen(true);
+    setTimeout(() => {
+      setEditingProject(project);
+      setIsEditDialogOpen(true);
+    }, 0);
   }, []);
 
   const openDeleteDialog = useCallback((projectId: string) => {
-    setDeletingProjectId(projectId);
-    setIsAlertOpen(true);
+    setTimeout(() => {
+      setDeletingProjectId(projectId);
+      setIsAlertOpen(true);
+    }, 0);
   }, []);
   
   const handleDeleteProject = async () => {
@@ -153,12 +171,14 @@ export default function ProjectsPage() {
   const filteredProjects = useMemo(() => {
     if (!projects) return [];
     const searchTerm = searchQuery.toLowerCase();
-    return projects.filter(project =>
+    return projects
+      .filter(p => !p.tenantId || p.tenantId === tenantId || (tenantId === 'default_workspace' && (!p.tenantId || p.tenantId === 'default_workspace')))
+      .filter(project =>
         project.projectName.toLowerCase().includes(searchTerm) ||
         project.location.toLowerCase().includes(searchTerm) ||
         project.status.toLowerCase().includes(searchTerm)
-    );
-  }, [projects, searchQuery]);
+      );
+  }, [projects, searchQuery, tenantId]);
 
   const totalPages = Math.ceil(filteredProjects.length / ITEMS_PER_PAGE);
   const paginatedProjects = filteredProjects.slice(
@@ -199,20 +219,37 @@ export default function ProjectsPage() {
                         }}
                     />
                 </div>
-                <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                <DialogTrigger asChild>
-                    <Button className="w-full sm:w-auto">
+                {isLimitReached ? (
+                  <Button
+                    className="w-full sm:w-auto border-amber-500/50 text-amber-600 dark:text-amber-400"
+                    variant="outline"
+                    onClick={() => {
+                      toast({
+                        variant: 'destructive',
+                        title: 'Project Limit Reached',
+                        description: `Your ${tenantPlan.toUpperCase()} subscription tier allows up to ${maxAllowedProjects} active projects (${currentProjectCount}/${maxAllowedProjects}). Please contact admin@remotizedit.online to upgrade to Ultra for unlimited projects.`,
+                      });
+                    }}
+                  >
                     <PlusCircle className="mr-2 h-4 w-4" />
-                    Add Project
-                    </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[625px]">
-                    <DialogHeader>
-                    <DialogTitle>Add New Project</DialogTitle>
-                    </DialogHeader>
-                    <AddProjectForm setDialogOpen={setIsAddDialogOpen} />
-                </DialogContent>
-                </Dialog>
+                    Limit Reached ({currentProjectCount}/{maxAllowedProjects})
+                  </Button>
+                ) : (
+                  <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="w-full sm:w-auto">
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Add Project
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[625px]">
+                      <DialogHeader>
+                        <DialogTitle>Add New Project</DialogTitle>
+                      </DialogHeader>
+                      <AddProjectForm setDialogOpen={setIsAddDialogOpen} />
+                    </DialogContent>
+                  </Dialog>
+                )}
             </div>
           </div>
         </CardHeader>

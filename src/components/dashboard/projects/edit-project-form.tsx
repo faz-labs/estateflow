@@ -327,9 +327,13 @@ export function EditProjectForm({
                 <p>Loading flats...</p>
               ) : (
               <div className="space-y-4 mt-2">
-                {fields.map((field, index) => (
+                {fields.map((fieldItem, index) => {
+                  const flatStatus = form.watch(`flats.${index}.status`);
+                  const isLocked = flatStatus === 'Sold' || flatStatus === 'Reserved';
+
+                  return (
                   <div
-                    key={field.id}
+                    key={fieldItem.id}
                     className="grid grid-cols-[1fr_1fr_auto_auto] items-end gap-2 p-3 border rounded-lg"
                   >
                     <FormField
@@ -344,7 +348,7 @@ export function EditProjectForm({
                             <Input
                               {...field}
                               placeholder={`E.g., A-${101 + index}`}
-                              disabled={field.value === 'Sold' || field.value === 'Reserved'}
+                              disabled={isLocked}
                             />
                           </FormControl>
                           <FormMessage />
@@ -364,7 +368,7 @@ export function EditProjectForm({
                               type="number"
                               {...field}
                               placeholder="E.g., 1200"
-                              disabled={field.value === 'Sold' || field.value === 'Reserved'}
+                              disabled={isLocked}
                             />
                           </FormControl>
                           <FormMessage />
@@ -384,7 +388,7 @@ export function EditProjectForm({
                               onValueChange={field.onChange}
                               defaultValue={field.value}
                               className="flex items-center space-x-2"
-                              disabled={field.value === 'Sold' || field.value === 'Reserved'}
+                              disabled={isLocked}
                             >
                               <FormItem className="flex items-center space-x-1 space-y-0">
                                 <FormControl>
@@ -438,7 +442,8 @@ export function EditProjectForm({
                       </AlertDialogContent>
                     </AlertDialog>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               )}
                {form.formState.errors.flats &&

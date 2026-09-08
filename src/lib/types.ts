@@ -15,12 +15,52 @@ export type PaymentPurpose = 'Booking Money' | 'Installment' | 'Other';
 export type ExpenseStatus = 'Unpaid' | 'Partially Paid' | 'Paid';
 
 
+export type SubscriptionPlan = 'demo' | 'pro' | 'ultra' | 'starter' | 'enterprise';
+export type TenantStatus = 'active' | 'suspended';
+
+export interface Tenant {
+  id: string;
+  name: string;
+  ownerUid: string;
+  createdAt: string;
+  plan: SubscriptionPlan;
+  status: TenantStatus;
+  expiresAt?: string; // ISO date string for demo expiration (15 days)
+  maxProjects?: number; // e.g. 5 for demo, 10 for pro, 999999 for ultra
+}
+
+export interface TenantInvite {
+  id: string;
+  email: string;
+  tenantId: string;
+  companyName: string;
+  role: 'Admin' | 'Accountant' | 'Viewer';
+  invitedBy: string;
+  createdAt: string;
+  status: 'pending' | 'accepted';
+}
+
+export interface TenantNotice {
+  id: string;
+  tenantId: string; // specific tenantId or 'all' for broadcast
+  title: string;
+  message: string;
+  priority?: 'info' | 'warning' | 'urgent';
+  createdAt: string;
+  createdBy?: string;
+  readBy?: string[]; // Array of user UIDs who have read/dismissed the notice
+}
+
 export interface User {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
-  role: 'Admin' | 'Accountant' | 'Viewer';
+  role: 'SuperAdmin' | 'Admin' | 'Accountant' | 'Viewer';
+  tenantId?: string;
+  companyName?: string;
+  mustChangePassword?: boolean;
+  createdAt?: string;
 }
 
 export interface Project {
@@ -31,6 +71,7 @@ export interface Project {
   startDate: string;
   status: ProjectStatus;
   targetSell: number;
+  tenantId?: string;
 }
 
 export interface Flat {
@@ -49,6 +90,7 @@ export interface Customer {
   mobile: string;
   address: string;
   nidNumber: string;
+  tenantId?: string;
 }
 
 export interface Vendor {
@@ -57,6 +99,7 @@ export interface Vendor {
   phoneNumber: string;
   enterpriseName: string;
   details?: string;
+  tenantId?: string;
 }
 
 export interface InflowTransaction {
@@ -72,6 +115,7 @@ export interface InflowTransaction {
   reference?: string;
   paymentPurpose: PaymentPurpose;
   otherPurpose?: string;
+  tenantId?: string;
 }
 
 export interface OutflowTransaction {
@@ -85,6 +129,7 @@ export interface OutflowTransaction {
   description?: string;
   paymentMethod?: PaymentMode;
   reference?: string;
+  tenantId?: string;
 }
 
 export interface Sale {
@@ -102,6 +147,7 @@ export interface Sale {
   note?: string;
   deedLink?: string;
   extraCosts?: { purpose: string; amount: number }[];
+  tenantId?: string;
 }
 
 export interface Counter {
@@ -111,6 +157,7 @@ export interface Counter {
 export interface ExpenseItem {
   id: string;
   name: string;
+  tenantId?: string;
 }
 
 export interface Expense {
@@ -125,11 +172,13 @@ export interface Expense {
   status: ExpenseStatus;
   date: string;
   description?: string;
+  tenantId?: string;
 }
 
 export interface OperatingCostItem {
   id: string;
   name: string;
+  tenantId?: string;
 }
 
 export interface OperatingCost {
@@ -139,5 +188,6 @@ export interface OperatingCost {
   description?: string;
   reference?: string;
   amount: number;
+  tenantId?: string;
 }
     

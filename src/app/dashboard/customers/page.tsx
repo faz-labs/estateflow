@@ -45,12 +45,13 @@ import {
     DropdownMenuTrigger,
   } from "@/components/ui/dropdown-menu"
 import { useCollection, useFirestore, useMemoFirebase, deleteDocumentNonBlocking } from '@/firebase';
-import { collection, query, doc } from 'firebase/firestore';
+import { collection, query, doc, where } from 'firebase/firestore';
 import type { Customer } from '@/lib/types';
 import { AddCustomerForm } from '@/components/dashboard/customers/add-customer-form';
 import { EditCustomerForm } from '@/components/dashboard/customers/edit-customer-form';
 import { useState, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { useUserProfile } from '@/hooks/use-user-profile';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { exportToCsv } from '@/lib/csv';
@@ -60,9 +61,17 @@ const ITEMS_PER_PAGE = 15;
 export default function CustomersPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { tenantId } = useUserProfile();
+
   const customersQuery = useMemoFirebase(
-    () => query(collection(firestore, 'customers')),
-    [firestore]
+    () => {
+      if (!firestore) return null;
+      if (tenantId && tenantId !== 'default_workspace') {
+        return query(collection(firestore, 'customers'), where('tenantId', '==', tenantId));
+      }
+      return query(collection(firestore, 'customers'));
+    },
+    [firestore, tenantId]
   );
   const { data: customers, isLoading } = useCollection<Customer>(customersQuery);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -71,30 +80,38 @@ export default function CustomersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
+  const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+
   const handleEditClick = (customer: Customer) => {
     setEditingCustomer(customer);
     setIsEditDialogOpen(true);
   };
   
-  const handleDeleteCustomer = (customerId: string) => {
-    const customerRef = doc(firestore, 'customers', customerId);
+  const confirmDeleteCustomer = () => {
+    if (!deletingCustomer) return;
+    const customerRef = doc(firestore, 'customers', deletingCustomer.id);
     deleteDocumentNonBlocking(customerRef);
     toast({
         title: "Customer Deleted",
-        description: "The customer has been successfully deleted.",
+        description: `${deletingCustomer.fullName} has been successfully deleted.`,
     });
+    setIsDeleteAlertOpen(false);
+    setDeletingCustomer(null);
   };
 
   const filteredCustomers = useMemo(() => {
     if (!customers) return [];
     const searchTerm = searchQuery.toLowerCase();
-    return customers.filter(customer =>
+    return customers
+      .filter(c => !c.tenantId || c.tenantId === tenantId || (tenantId === 'default_workspace' && (!c.tenantId || c.tenantId === 'default_workspace')))
+      .filter(customer =>
         customer.fullName.toLowerCase().includes(searchTerm) ||
         customer.mobile.toLowerCase().includes(searchTerm) ||
         customer.address.toLowerCase().includes(searchTerm) ||
         customer.nidNumber.toLowerCase().includes(searchTerm)
-    );
-  }, [customers, searchQuery]);
+      );
+  }, [customers, searchQuery, tenantId]);
 
   const totalPages = Math.ceil(filteredCustomers.length / ITEMS_PER_PAGE);
   const paginatedCustomers = filteredCustomers.slice(
@@ -206,53 +223,42 @@ export default function CustomersPage() {
                       <TableCell>{customer.address}</TableCell>
                       <TableCell>{customer.nidNumber}</TableCell>
                       <TableCell className="text-right">
-                         <AlertDialog>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" className="h-8 w-8 p-0">
-                                    <span className="sr-only">Open menu</span>
-                                    <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                <DropdownMenuItem asChild>
-                                    <Link href={`/dashboard/customers/${customer.id}`}>
-                                        <View className="mr-2 h-4 w-4" />
-                                        View Details
-                                    </Link>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => handleEditClick(customer)}>
-                                    <Pencil className="mr-2 h-4 w-4" />
-                                    Edit
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <AlertDialogTrigger asChild>
-                                    <DropdownMenuItem className="text-red-600" onSelect={(e) => e.preventDefault()}>
-                                        <Trash2 className="mr-2 h-4 w-4" />
-                                        Delete
-                                    </DropdownMenuItem>
-                                </AlertDialogTrigger>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  This action cannot be undone. This will permanently delete this customer.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => handleDeleteCustomer(customer.id)}
-                                  className="bg-destructive hover:bg-destructive/90"
-                                >
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Open menu</span>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/dashboard/customers/${customer.id}`}>
+                                <View className="mr-2 h-4 w-4" />
+                                View Details
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => {
+                              setTimeout(() => handleEditClick(customer), 0);
+                            }}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onSelect={() => {
+                                setTimeout(() => {
+                                  setDeletingCustomer(customer);
+                                  setIsDeleteAlertOpen(true);
+                                }, 0);
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -294,6 +300,27 @@ export default function CustomersPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete customer{' '}
+              <span className="font-semibold text-foreground">{deletingCustomer?.fullName}</span>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setIsDeleteAlertOpen(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteCustomer}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -42,6 +42,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
+import { useUserProfile } from '@/hooks/use-user-profile';
 import type {
   Project,
   Customer,
@@ -140,6 +141,7 @@ export type EnrichedTransaction = InflowTransaction & {
 export default function AddPaymentPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { tenantId } = useUserProfile();
   const router = useRouter();
 
   const [projectsForCustomer, setProjectsForCustomer] = useState<Project[]>([]);
@@ -361,6 +363,7 @@ export default function AddPaymentPage() {
             otherPurpose: data.otherPurpose,
             reference: data.reference,
             date: new Date(data.date).toISOString(),
+            tenantId: tenantId || 'default_workspace',
         };
 
         await runTransaction(firestore, async (transaction) => {
@@ -450,13 +453,17 @@ export default function AddPaymentPage() {
 
 
   const handleEditClick = (payment: EnrichedTransaction) => {
-    setSelectedPayment(payment);
-    setIsEditDialogOpen(true);
+    setTimeout(() => {
+      setSelectedPayment(payment);
+      setIsEditDialogOpen(true);
+    }, 0);
   };
 
   const handleDeleteClick = (payment: InflowTransaction) => {
-    setSelectedPaymentForDelete(payment);
-    setIsDeleteAlertOpen(true);
+    setTimeout(() => {
+      setSelectedPaymentForDelete(payment);
+      setIsDeleteAlertOpen(true);
+    }, 0);
   };
 
   const confirmDeletePayment = () => {
@@ -474,26 +481,71 @@ export default function AddPaymentPage() {
     });
   };
 
-    const handleViewClick = async (payment: EnrichedTransaction) => {
-        const customerSnap = await getDoc(doc(firestore, 'customers', payment.customerId));
-        const projectSnap = await getDoc(doc(firestore, 'projects', payment.projectId));
+  const handleViewClick = async (payment: EnrichedTransaction) => {
+    let customerData: Customer | null = null;
+    let projectData: Project | null = null;
 
-        if (!customerSnap.exists() || !projectSnap.exists()) {
-             toast({
-                variant: 'destructive',
-                title: 'Missing Data',
-                description: 'Cannot display receipt. Customer or Project data is missing.',
-            });
-            return;
+    try {
+      const customerSnap = await getDoc(doc(firestore, 'customers', payment.customerId));
+      if (customerSnap.exists()) {
+        customerData = customerSnap.data() as Customer;
+      }
+    } catch (e) {
+      console.warn('Could not fetch customer by doc ID:', e);
+    }
+
+    try {
+      const projectSnap = await getDoc(doc(firestore, 'projects', payment.projectId));
+      if (projectSnap.exists()) {
+        projectData = projectSnap.data() as Project;
+      }
+    } catch (e) {
+      console.warn('Could not fetch project by doc ID:', e);
+    }
+
+    // Fallback: If customer not found by doc ref, try querying by id field
+    if (!customerData && payment.customerId) {
+      try {
+        const q = query(collection(firestore, 'customers'), where('id', '==', payment.customerId), limit(1));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          customerData = snap.docs[0].data() as Customer;
         }
+      } catch {}
+    }
 
-        setSelectedPayment({
-            ...payment,
-            customer: customerSnap.data() as Customer,
-            project: projectSnap.data() as Project,
-        });
-        setIsViewDialogOpen(true);
-    };
+    // Fallback if records are still missing
+    if (!customerData) {
+      customerData = {
+        id: payment.customerId || 'N/A',
+        fullName: payment.customerName || 'Valued Customer',
+        mobile: 'N/A',
+        address: 'N/A',
+        nidNumber: 'N/A',
+      };
+    }
+
+    if (!projectData) {
+      projectData = {
+        id: payment.projectId || 'N/A',
+        projectName: payment.projectName || 'Project',
+        location: 'N/A',
+        totalFlats: 0,
+        startDate: new Date().toISOString(),
+        status: 'Ongoing',
+        targetSell: 0,
+      };
+    }
+
+    setSelectedPayment({
+        ...payment,
+        customer: customerData,
+        project: projectData,
+    });
+    setTimeout(() => {
+      setIsViewDialogOpen(true);
+    }, 0);
+  };
 
     const formatCurrency = (value: number) => `৳${value.toLocaleString('en-IN')}`;
 

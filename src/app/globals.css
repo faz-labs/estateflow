@@ -83,3 +83,18 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Fix: Radix UI dropdown/dialog pointer-events lock causing modals to freeze */
+body[style*="pointer-events: none"] {
+  pointer-events: auto !important;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: transparent !important;
+    color: black !important;
+  }
+}

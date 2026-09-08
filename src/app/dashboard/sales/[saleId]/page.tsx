@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useFirestore } from '@/firebase';
 import {
   doc,
@@ -62,11 +62,11 @@ type SaleDetails = {
 export default function SaleDetailPage({
   params,
 }: {
-  params: { saleId: string };
+  params: Promise<{ saleId: string }>;
 }) {
   const firestore = useFirestore();
   const router = useRouter();
-  const { saleId } = params;
+  const { saleId } = use(params);
 
   const [details, setDetails] = useState<SaleDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);

@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { useFirestore, addDocumentNonBlocking } from '@/firebase';
 import { collection, doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 const addItemFormSchema = z.object({
   name: z.string().min(2, { message: 'Item name must be at least 2 characters.' }),
@@ -29,6 +30,7 @@ interface AddOperatingCostItemFormProps {
 export function AddOperatingCostItemForm({ setDialogOpen }: AddOperatingCostItemFormProps) {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { tenantId } = useUserProfile();
   const form = useForm<AddItemFormValues>({
     resolver: zodResolver(addItemFormSchema),
     defaultValues: { name: '' },
@@ -40,7 +42,8 @@ export function AddOperatingCostItemForm({ setDialogOpen }: AddOperatingCostItem
       const newItemRef = doc(itemsCollection);
       addDocumentNonBlocking(itemsCollection, {
         id: newItemRef.id,
-        name: data.name
+        name: data.name,
+        tenantId: tenantId || 'default_workspace',
       });
       toast({ title: 'Item Added', description: `${data.name} has been added.` });
       form.reset();

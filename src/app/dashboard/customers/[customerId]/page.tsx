@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, use } from 'react';
 import { useFirestore, deleteDocumentNonBlocking } from '@/firebase';
 import {
   doc,
@@ -97,11 +97,11 @@ const PAYMENTS_PER_PAGE = 10;
 export default function CustomerDetailPage({
   params,
 }: {
-  params: { customerId: string };
+  params: Promise<{ customerId: string }>;
 }) {
   const firestore = useFirestore();
   const router = useRouter();
-  const { customerId } = params;
+  const { customerId } = use(params);
 
   const [details, setDetails] = useState<CustomerDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -247,13 +247,17 @@ export default function CustomerDetailPage({
 
   // Action handlers for payments
   const handleEditClick = (payment: InflowTransaction) => {
-    setSelectedPayment(payment);
-    setIsEditDialogOpen(true);
+    setTimeout(() => {
+      setSelectedPayment(payment);
+      setIsEditDialogOpen(true);
+    }, 0);
   };
 
   const handleDeleteClick = (payment: InflowTransaction) => {
-    setSelectedPayment(payment);
-    setIsDeleteAlertOpen(true);
+    setTimeout(() => {
+      setSelectedPayment(payment);
+      setIsDeleteAlertOpen(true);
+    }, 0);
   };
   
   const confirmDeletePayment = () => {
@@ -269,25 +273,49 @@ export default function CustomerDetailPage({
   const handleViewClick = async (payment: InflowTransaction) => {
     if (!details) return;
     
-    const sale = details.sales.find(s => s.flatId === payment.flatId);
-    if (!sale) return;
-    
-    const projectSnap = await getDoc(doc(firestore, 'projects', sale.projectId));
-    if (!projectSnap.exists()) return;
+    // Find sale if possible
+    const sale = details.sales.find(s => s.flatId === payment.flatId) || details.sales[0];
+    const projectId = sale?.projectId || payment.projectId;
+
+    let projectData: Project | null = null;
+    if (projectId) {
+      try {
+        const projectSnap = await getDoc(doc(firestore, 'projects', projectId));
+        if (projectSnap.exists()) {
+          projectData = projectSnap.data() as Project;
+        }
+      } catch (e) {
+        console.warn('Could not fetch project doc:', e);
+      }
+    }
+
+    if (!projectData) {
+      projectData = {
+        id: projectId || 'N/A',
+        projectName: sale?.projectName || 'Project',
+        location: 'N/A',
+        totalFlats: 0,
+        startDate: new Date().toISOString(),
+        status: 'Ongoing',
+        targetSell: 0,
+      };
+    }
 
     const enrichedPayment: EnrichedTransaction = {
       ...payment,
       customerName: details.customer.fullName,
-      projectName: sale.projectName,
-      flatNumber: sale.flatNumber,
+      projectName: sale?.projectName || projectData.projectName,
+      flatNumber: sale?.flatNumber || 'N/A',
     };
     
     setSelectedPaymentForView({
         payment: enrichedPayment,
         customer: details.customer,
-        project: projectSnap.data() as Project,
+        project: projectData,
     });
-    setIsViewDialogOpen(true);
+    setTimeout(() => {
+      setIsViewDialogOpen(true);
+    }, 0);
   };
 
   const formatCurrency = (value: number) => {

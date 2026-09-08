@@ -34,6 +34,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 
 const projectFormSchema = z.object({
@@ -70,6 +71,7 @@ interface AddProjectFormProps {
 export function AddProjectForm({ setDialogOpen }: AddProjectFormProps) {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { tenantId } = useUserProfile();
   const form = useForm<ProjectFormValues>({
     resolver: zodResolver(projectFormSchema),
     defaultValues: {
@@ -100,6 +102,7 @@ export function AddProjectForm({ setDialogOpen }: AddProjectFormProps) {
         startDate: new Date(data.startDate).toISOString(),
         status: data.status,
         targetSell: data.targetSell,
+        tenantId: tenantId || 'default_workspace',
       };
 
       // Create a batch to write all documents atomically

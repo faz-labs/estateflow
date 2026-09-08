@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, use } from 'react';
 import { useFirestore, deleteDocumentNonBlocking } from '@/firebase';
 import {
   doc,
@@ -97,12 +97,12 @@ const ITEMS_PER_PAGE = 5;
 export default function VendorDetailPage({
   params,
 }: {
-  params: { vendorId: string };
+  params: Promise<{ vendorId: string }>;
 }) {
   const firestore = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
-  const { vendorId } = params;
+  const { vendorId } = use(params);
 
   const [details, setDetails] = useState<VendorDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -161,6 +161,7 @@ export default function VendorDetailPage({
         
         const enrichedExpenses: EnrichedExpense[] = vendorExpenses.map(exp => ({
             ...exp,
+            vendorName: vendorData.vendorName,
             projectName: projectsMap.get(exp.projectId)?.projectName || 'N/A',
             itemName: itemsMap.get(exp.itemId)?.name || 'N/A',
         })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -225,13 +226,17 @@ export default function VendorDetailPage({
   const totalPaymentPages = Math.ceil(filteredPayments.length / ITEMS_PER_PAGE);
 
   const handleEditExpenseClick = (expense: EnrichedExpense) => {
-    setSelectedExpense(expense);
-    setIsEditDialogOpen(true);
+    setTimeout(() => {
+      setSelectedExpense(expense);
+      setIsEditDialogOpen(true);
+    }, 0);
   };
   
   const handleViewExpenseClick = (expense: EnrichedExpense) => {
-    setSelectedExpense(expense);
-    setIsViewDialogOpen(true);
+    setTimeout(() => {
+      setSelectedExpense(expense);
+      setIsViewDialogOpen(true);
+    }, 0);
   };
   
   const handleDeleteExpenseClick = (expense: EnrichedExpense) => {
@@ -243,8 +248,10 @@ export default function VendorDetailPage({
         });
         return;
     }
-    setSelectedExpense(expense);
-    setIsDeleteExpenseAlertOpen(true);
+    setTimeout(() => {
+      setSelectedExpense(expense);
+      setIsDeleteExpenseAlertOpen(true);
+    }, 0);
   };
   
   const confirmDeleteExpense = () => {
@@ -261,8 +268,10 @@ export default function VendorDetailPage({
   };
   
   const handleDeletePaymentClick = (payment: EnrichedOutflow) => {
-    setSelectedPayment(payment);
-    setIsDeletePaymentAlertOpen(true);
+    setTimeout(() => {
+      setSelectedPayment(payment);
+      setIsDeletePaymentAlertOpen(true);
+    }, 0);
   };
   
   const confirmDeletePayment = async () => {
@@ -277,21 +286,26 @@ export default function VendorDetailPage({
 
     try {
         if (selectedPayment.expenseId) {
-            await runTransaction(firestore, async (transaction) => {
-                const expenseQuery = query(collection(firestore, 'expenses'), where('expenseId', '==', selectedPayment.expenseId), limit(1));
-                const expenseSnap = await transaction.get(expenseQuery);
+            const expenseQuery = query(collection(firestore, 'expenses'), where('expenseId', '==', selectedPayment.expenseId), limit(1));
+            const expenseSnap = await getDocs(expenseQuery);
 
-                if (expenseSnap.empty) {
-                    throw new Error(`Expense with ID ${selectedPayment.expenseId} not found.`);
+            if (expenseSnap.empty) {
+                throw new Error(`Expense with ID ${selectedPayment.expenseId} not found.`);
+            }
+
+            const expenseDocRef = expenseSnap.docs[0].ref;
+
+            await runTransaction(firestore, async (transaction) => {
+                const freshExpenseSnap = await transaction.get(expenseDocRef);
+                if (!freshExpenseSnap.exists()) {
+                    throw new Error(`Expense not found.`);
                 }
 
-                const expenseDoc = expenseSnap.docs[0];
-                const expenseData = expenseDoc.data() as Expense;
-
+                const expenseData = freshExpenseSnap.data() as Expense;
                 const newPaidAmount = expenseData.paidAmount - selectedPayment.amount;
                 const newStatus = newPaidAmount <= 0 ? 'Unpaid' : 'Partially Paid';
                 
-                transaction.update(expenseDoc.ref, {
+                transaction.update(expenseDocRef, {
                     paidAmount: newPaidAmount,
                     status: newStatus,
                 });

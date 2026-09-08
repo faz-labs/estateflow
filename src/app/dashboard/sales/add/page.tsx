@@ -31,6 +31,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { PlusCircle, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 const addSaleFormSchema = z.object({
   projectId: z.string().min(1, { message: 'Please select a project.' }),
@@ -56,6 +57,7 @@ type AddSaleFormValues = z.infer<typeof addSaleFormSchema>;
 export default function AddSalePage() {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { tenantId } = useUserProfile();
   const router = useRouter();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -123,6 +125,7 @@ export default function AddSalePage() {
             id: saleRef.id,
             totalPrice: finalTotalPrice,
             saleDate: new Date(data.saleDate).toISOString(),
+            tenantId: tenantId || 'default_workspace',
         });
 
         // 2. Update flat status to 'Sold'
