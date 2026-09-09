@@ -43,6 +43,7 @@ const tenantNavItems = [
   { href: '/dashboard/make-payment', icon: Banknote, label: 'Make Payment' },
   { href: '/dashboard/operating-cost', icon: Landmark, label: 'Operating Cost' },
   { href: '/dashboard/export-reports', icon: FileDown, label: 'Export Reports' },
+  { href: '/dashboard/settings', icon: Settings, label: 'Company Settings' },
 ];
 
 // Platform administration navigation for Super Admin
@@ -51,7 +52,6 @@ const superAdminNavItems = [
   { href: '/dashboard/tenants#demos', icon: Calendar, label: 'Demo Inquiries' },
   { href: '/dashboard/tenants#requests', icon: UserPlus, label: 'User Access Requests' },
   { href: '/dashboard/tenants#modules', icon: Boxes, label: 'Modular Features Engine' },
-  { href: '/dashboard/settings', icon: Settings, label: 'Platform Security' },
   { href: '/dashboard/guide', icon: BookOpen, label: 'Admin Documentation' },
 ];
 
