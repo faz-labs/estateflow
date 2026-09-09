@@ -10,15 +10,15 @@ service cloud.firestore {
     }
 
     /**
-     * Platform Super Admin: anonto.kings9@gmail.com, estate.admin@remotizedit.online, admin@remotizedit.online or users with SuperAdmin role.
-     * Super Admin has full unrestricted access across all tenants and collections.
+     * Platform Super Admin: anonto.kings9@gmail.com, estate.admin@remotizedit.online, admin@remotizedit.online.
+     * Super Admin check is strictly based on the cryptographically signed JWT token email to prevent privilege injection.
      */
     function isSuperAdmin() {
-      return isSignedIn() && (
-        request.auth.token.email in ['anonto.kings9@gmail.com', 'admin@remotizedit.online', 'estate.admin@remotizedit.online'] ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'SuperAdmin')
-      );
+      return isSignedIn() && request.auth.token.email in [
+        'anonto.kings9@gmail.com',
+        'admin@remotizedit.online',
+        'estate.admin@remotizedit.online'
+      ];
     }
 
     /**
@@ -71,8 +71,12 @@ service cloud.firestore {
     // --------------------------------------------------------------------------
     match /tenants/{tenantId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if isSuperAdmin() || isAdmin();
+      // Only platform Super Admins can provision or delete tenants
+      allow create, delete: if isSuperAdmin();
+      // Admins can update their own organization workspace metadata, SuperAdmin can update all
+      allow update: if isSuperAdmin() || (
+        isAdmin() && getUserData().get('tenantId', '') == tenantId
+      );
     }
 
     // --------------------------------------------------------------------------
@@ -90,7 +94,24 @@ service cloud.firestore {
     // --------------------------------------------------------------------------
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin() || isAdmin());
+      // Only SuperAdmin can create SuperAdmin accounts. Users can create their own non-SuperAdmin profile.
+      allow create: if isSuperAdmin() || (
+        isSignedIn() && request.auth.uid == userId &&
+        request.resource.data.get('role', 'Viewer') != 'SuperAdmin'
+      );
+      // Strictly prevent self-privilege escalation: users cannot change their own role, tenantId, or email
+      allow update: if isSuperAdmin() || (
+        isSignedIn() && request.auth.uid == userId &&
+        request.resource.data.get('role', '') == resource.data.get('role', '') &&
+        request.resource.data.get('tenantId', '') == resource.data.get('tenantId', '') &&
+        request.resource.data.get('email', '') == resource.data.get('email', '')
+      ) || (
+        // Organization Admin can only manage non-SuperAdmin users within their own tenant
+        isAdmin() &&
+        resource.data.get('tenantId', '') == getUserData().get('tenantId', '') &&
+        request.resource.data.get('tenantId', '') == resource.data.get('tenantId', '') &&
+        request.resource.data.get('role', '') != 'SuperAdmin'
+      );
       allow delete: if isSuperAdmin();
     }
 
@@ -209,9 +230,10 @@ service cloud.firestore {
 
     // --------------------------------------------------------------------------
     // Password Reset Tokens (/password_resets)
+    // Completely isolated from client SDK access. Only server Firebase Admin SDK can access.
     // --------------------------------------------------------------------------
     match /password_resets/{tokenId} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

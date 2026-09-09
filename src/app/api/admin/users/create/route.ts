@@ -1,11 +1,69 @@
 import { NextResponse } from 'next/server';
+import { getAdminAuth } from '@/lib/firebase-admin';
+
+const SUPER_ADMIN_EMAILS = [
+  'anonto.kings9@gmail.com',
+  'admin@remotizedit.online',
+  'estate.admin@remotizedit.online',
+];
 
 /**
  * Super Admin endpoint to provision a new user in Firebase Auth and Firestore.
- * Does NOT sign out the active Super Admin session.
+ * Strictly verifies that the caller is an authenticated Super Admin.
  */
 export async function POST(request: Request) {
   try {
+    // 1. Verify caller authentication token
+    const authHeader = request.headers.get('authorization') || '';
+    if (!authHeader.startsWith('Bearer ')) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Missing authentication credentials.' },
+        { status: 401 }
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim();
+    const adminAuth = getAdminAuth();
+    let callerEmail = '';
+
+    if (adminAuth) {
+      try {
+        const decoded = await adminAuth.verifyIdToken(token);
+        callerEmail = decoded.email?.toLowerCase() || '';
+      } catch (verifyErr) {
+        return NextResponse.json(
+          { error: 'Unauthorized: Invalid or expired authentication credentials.' },
+          { status: 401 }
+        );
+      }
+    } else {
+      const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+      const verifyRes = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken: token }),
+        }
+      );
+      if (!verifyRes.ok) {
+        return NextResponse.json(
+          { error: 'Unauthorized: Authentication verification failed.' },
+          { status: 401 }
+        );
+      }
+      const verifyData = await verifyRes.json();
+      callerEmail = verifyData.users?.[0]?.email?.toLowerCase() || '';
+    }
+
+    // 2. Enforce Super Admin authorization
+    if (!SUPER_ADMIN_EMAILS.includes(callerEmail)) {
+      return NextResponse.json(
+        { error: 'Forbidden: Only platform Super Admins can provision user accounts.' },
+        { status: 403 }
+      );
+    }
+
     const { email, password, firstName, lastName, role, tenantId, companyName } = await request.json();
 
     if (!email || !password || !tenantId) {

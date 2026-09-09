@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAdminAuth } from '@/lib/firebase-admin';
+import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
 
 /**
  * Confirms custom password reset token generated via Mailcow email dispatch
@@ -33,23 +33,40 @@ export async function POST(request: Request) {
       );
     }
 
-    // 1. Fetch token document from Firestore REST API
-    const tokenDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/password_resets/${token}`;
-    const tokenRes = await fetch(tokenDocUrl);
+    const adminFirestore = getAdminFirestore();
+    let email = '';
+    let expiresAt = 0;
+    let used = false;
 
-    if (!tokenRes.ok) {
-      return NextResponse.json(
-        { error: 'Invalid or expired password reset link. Please request a new one.' },
-        { status: 400 }
-      );
+    // 1. Fetch token document via Admin SDK (bypassing client security rules)
+    if (adminFirestore) {
+      const tokenDoc = await adminFirestore.collection('password_resets').doc(token).get();
+      if (!tokenDoc.exists) {
+        return NextResponse.json(
+          { error: 'Invalid or expired password reset link. Please request a new one.' },
+          { status: 400 }
+        );
+      }
+      const data = tokenDoc.data();
+      email = data?.email || '';
+      expiresAt = Number(data?.expiresAt || 0);
+      used = Boolean(data?.used);
+    } else {
+      // Fallback via REST API
+      const tokenDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/password_resets/${token}`;
+      const tokenRes = await fetch(tokenDocUrl);
+      if (!tokenRes.ok) {
+        return NextResponse.json(
+          { error: 'Invalid or expired password reset link. Please request a new one.' },
+          { status: 400 }
+        );
+      }
+      const tokenData = await tokenRes.json();
+      const fields = tokenData.fields;
+      email = fields?.email?.stringValue || '';
+      expiresAt = parseInt(fields?.expiresAt?.integerValue || fields?.expiresAt?.stringValue || '0', 10);
+      used = fields?.used?.booleanValue || false;
     }
-
-    const tokenData = await tokenRes.json();
-    const fields = tokenData.fields;
-
-    const email = fields?.email?.stringValue;
-    const expiresAt = parseInt(fields?.expiresAt?.integerValue || fields?.expiresAt?.stringValue || '0', 10);
-    const used = fields?.used?.booleanValue || false;
 
     if (!email || used || Date.now() > expiresAt) {
       return NextResponse.json(
@@ -58,7 +75,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Actually update user password in Firebase Authentication!
+    // 2. Update user password in Firebase Authentication
     const adminAuth = getAdminAuth();
     if (adminAuth) {
       try {
@@ -69,29 +86,37 @@ export async function POST(request: Request) {
       } catch (authErr: any) {
         console.error('Failed to update password via Firebase Admin:', authErr);
         return NextResponse.json(
-          { error: `Could not update password in Firebase Auth: ${authErr.message}` },
+          { error: 'Could not update password. Please ensure it meets minimum requirements and try again.' },
           { status: 500 }
         );
       }
     } else {
       return NextResponse.json(
         { 
-          error: 'Firebase Admin credentials (FIREBASE_SERVICE_ACCOUNT_KEY) are missing on the server. Please add your Firebase service account key in .env.local / Vercel to update passwords.',
+          error: 'Authentication update service is temporarily unavailable. Please contact platform support.',
         },
         { status: 500 }
       );
     }
 
     // 3. Mark token as used
-    await fetch(`${tokenDocUrl}?updateMask.fieldPaths=used`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fields: {
-          used: { booleanValue: true },
-        },
-      }),
-    });
+    if (adminFirestore) {
+      await adminFirestore.collection('password_resets').doc(token).update({
+        used: true,
+        usedAt: new Date().toISOString(),
+      });
+    } else {
+      const tokenDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/password_resets/${token}`;
+      await fetch(`${tokenDocUrl}?updateMask.fieldPaths=used`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: {
+            used: { booleanValue: true },
+          },
+        }),
+      });
+    }
 
     return NextResponse.json({
       success: true,

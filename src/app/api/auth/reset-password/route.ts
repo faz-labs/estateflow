@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
-import { getAdminAuth } from '@/lib/firebase-admin';
+import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { 
           success: false,
-          warning: 'Mailcow SMTP is not configured. Please add SMTP_HOST, SMTP_USER, and SMTP_PASS to environment variables on Vercel.',
+          warning: 'Email delivery service is currently not configured. Please contact the administrator.',
           configured: false,
         },
         { status: 200 }
@@ -83,12 +83,25 @@ export async function POST(request: Request) {
       }
     }
 
-    // Option B: Fallback to custom secure token in Firestore
+    // Option B: Fallback to custom secure token in Firestore via Admin SDK
     if (!resetUrl) {
       const customToken = crypto.randomBytes(32).toString('hex');
       const expiresAt = Date.now() + 1000 * 60 * 60; // 1 hour validity
 
-      if (projectId) {
+      const adminFirestore = getAdminFirestore();
+      if (adminFirestore) {
+        try {
+          await adminFirestore.collection('password_resets').doc(customToken).set({
+            token: customToken,
+            email: normalizedEmail,
+            expiresAt,
+            used: false,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (fsErr) {
+          console.warn('Failed to store custom reset token in Admin Firestore:', fsErr);
+        }
+      } else if (projectId) {
         try {
           const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/password_resets/${customToken}`;
           await fetch(docUrl, {
@@ -181,8 +194,7 @@ export async function POST(request: Request) {
     console.error('Password Reset Send Error:', error);
     return NextResponse.json(
       { 
-        error: error.message || 'Failed to send reset email.',
-        details: error.code || 'SMTP_TRANSACTION_FAILED'
+        error: 'Failed to dispatch password reset email. Please try again later or contact support.',
       },
       { 
         status: 500,

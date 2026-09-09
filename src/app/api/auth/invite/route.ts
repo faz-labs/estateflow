@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { 
           success: false,
-          warning: 'Mailcow SMTP is not configured in .env.local yet. Please update SMTP_PASS in .env.local to dispatch invite emails.',
+          warning: 'Email delivery service is currently not configured. Please contact the administrator.',
           configured: false,
         },
         { status: 200 }
@@ -110,17 +110,10 @@ export async function POST(request: Request) {
     });
 
   } catch (error: any) {
-    console.error('Mailcow SMTP Send Error:', error);
-
-    let friendlyMessage = error.message || 'Failed to send invite email through Mailcow SMTP.';
-    if (error.code === 'EAUTH' || error.responseCode === 535) {
-      friendlyMessage = `Mailcow Authentication Failed (535): Incorrect password or mailbox not found for "${process.env.SMTP_USER}".`;
-    }
-
+    console.error('Email Dispatch Error:', error);
     return NextResponse.json(
       { 
-        error: friendlyMessage,
-        details: error.code || 'SMTP_TRANSACTION_FAILED'
+        error: 'Failed to dispatch invitation email. Please try again later.',
       },
       { status: 500 }
     );

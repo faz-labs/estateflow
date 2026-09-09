@@ -282,9 +282,13 @@ export default function SuperAdminTenantsPage() {
       // If initial admin credentials were provided, provision them directly
       if (adminEmail.trim() && adminPassword) {
         try {
+          const idToken = await user?.getIdToken();
           await fetch('/api/admin/users/create', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${idToken}`,
+            },
             body: JSON.stringify({
               email: adminEmail.trim(),
               password: adminPassword,
@@ -344,9 +348,13 @@ export default function SuperAdminTenantsPage() {
       const targetTenant = tenants.find((t) => t.id === userTenantId);
       const companyName = targetTenant ? targetTenant.name : 'Workspace';
 
+      const idToken = await user?.getIdToken();
       const res = await fetch('/api/admin/users/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
         body: JSON.stringify({
           email: userEmail.trim(),
           password: userPassword,

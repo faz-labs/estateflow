@@ -17,22 +17,28 @@ export async function POST(request: Request) {
       notes,
     } = body;
 
-    if (!targetEmail || !tenantId) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const cleanTargetEmail = String(targetEmail || '').trim().toLowerCase();
+
+    if (!cleanTargetEmail || !emailRegex.test(cleanTargetEmail) || !tenantId) {
       return NextResponse.json(
-        { error: 'Tenant ID and target email address are required.' },
+        { error: 'A valid target email address and tenant identifier are required.' },
         { status: 400 }
       );
     }
 
+    const validRoles = ['Admin', 'Accountant', 'Viewer'];
+    const safeRole = validRoles.includes(targetRole) ? targetRole : 'Viewer';
+
     const newRequest = {
-      tenantId: String(tenantId).trim(),
-      companyName: String(companyName || tenantId).trim(),
-      requestedByEmail: String(requestedByEmail || '').trim().toLowerCase(),
-      requestedByName: String(requestedByName || '').trim(),
-      targetEmail: String(targetEmail).trim().toLowerCase(),
-      targetName: String(targetName || '').trim(),
-      targetRole: targetRole || 'Viewer',
-      notes: String(notes || '').trim(),
+      tenantId: String(tenantId).trim().slice(0, 50),
+      companyName: String(companyName || tenantId).trim().slice(0, 100),
+      requestedByEmail: String(requestedByEmail || '').trim().toLowerCase().slice(0, 100),
+      requestedByName: String(requestedByName || '').trim().slice(0, 100),
+      targetEmail: cleanTargetEmail.slice(0, 100),
+      targetName: String(targetName || '').trim().slice(0, 100),
+      targetRole: safeRole,
+      notes: String(notes || '').trim().slice(0, 500),
       status: 'pending',
       createdAt: new Date().toISOString(),
     };
@@ -77,7 +83,7 @@ export async function POST(request: Request) {
   } catch (err: any) {
     console.error('User request API error:', err);
     return NextResponse.json(
-      { error: err.message || 'Failed to submit user access request.' },
+      { error: 'Failed to submit user access request. Please try again later.' },
       { status: 500 }
     );
   }
