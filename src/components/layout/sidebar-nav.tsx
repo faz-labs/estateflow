@@ -21,6 +21,7 @@ import {
   BookOpen,
   Boxes,
   UserPlus,
+  Calendar,
 } from 'lucide-react';
 import { useAuth } from '@/firebase';
 import { signOut } from 'firebase/auth';
@@ -47,6 +48,7 @@ const tenantNavItems = [
 // Platform administration navigation for Super Admin
 const superAdminNavItems = [
   { href: '/dashboard/tenants', icon: ShieldCheck, label: 'Tenants & Workspaces' },
+  { href: '/dashboard/tenants#demos', icon: Calendar, label: 'Demo Inquiries' },
   { href: '/dashboard/tenants#requests', icon: UserPlus, label: 'User Access Requests' },
   { href: '/dashboard/tenants#modules', icon: Boxes, label: 'Modular Features Engine' },
   { href: '/dashboard/settings', icon: Settings, label: 'Platform Security' },

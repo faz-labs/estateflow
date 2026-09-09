@@ -276,4 +276,18 @@ export interface OperatingCost {
   amount: number;
   tenantId?: string;
 }
-    
+
+export interface DemoRequest {
+  id: string;
+  name: string;
+  email: string;
+  company: string;
+  phone?: string;
+  projectCount?: string;
+  tier: string;
+  notes?: string;
+  status: 'pending' | 'contacted' | 'provisioned';
+  createdAt: string;
+  contactedAt?: string;
+  provisionedAt?: string;
+}

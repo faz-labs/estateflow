@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { useToast } from '@/hooks/use-toast';
-import type { Tenant, TenantNotice, User as UserProfile, SubscriptionPlan } from '@/lib/types';
+import type { Tenant, TenantNotice, User as UserProfile, SubscriptionPlan, DemoRequest } from '@/lib/types';
 import { SYSTEM_MODULES, SystemModule } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -73,6 +73,7 @@ import {
   Sliders,
   CheckCircle2,
   Sparkles,
+  Calendar,
 } from 'lucide-react';
 import {
   SUPPORTED_CURRENCIES,
@@ -115,6 +116,7 @@ export default function SuperAdminTenantsPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [notices, setNotices] = useState<TenantNotice[]>([]);
   const [userRequests, setUserRequests] = useState<UserProvisionRequest[]>([]);
+  const [demoRequests, setDemoRequests] = useState<DemoRequest[]>([]);
   const [selectedRequestToProvision, setSelectedRequestToProvision] = useState<UserProvisionRequest | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [copiedTenantId, setCopiedTenantId] = useState<string | null>(null);
@@ -247,10 +249,40 @@ export default function SuperAdminTenantsPage() {
         ...d.data(),
       })) as TenantNotice[];
 
+      let loadedDemos: DemoRequest[] = [];
+      try {
+        const demoSnap = await getDocs(collection(firestore, 'demo_requests'));
+        loadedDemos = (demoSnap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as DemoRequest[]).sort((a, b) => {
+          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return timeB - timeA;
+        });
+      } catch (e) {
+        console.warn('Demo requests client query note:', e);
+      }
+
+      if (loadedDemos.length === 0) {
+        try {
+          const res = await fetch('/api/demo-request');
+          if (res.ok) {
+            const dData = await res.json();
+            if (dData.requests && Array.isArray(dData.requests)) {
+              loadedDemos = dData.requests;
+            }
+          }
+        } catch (apiErr) {
+          console.warn('Demo requests server fallback note:', apiErr);
+        }
+      }
+
       setTenants(loadedTenants);
       setUsers(loadedUsers);
       setNotices(loadedNotices);
       setUserRequests(loadedRequests);
+      setDemoRequests(loadedDemos);
     } catch (err: any) {
       console.error('Error fetching SuperAdmin data:', err);
       toast({
@@ -291,6 +323,31 @@ export default function SuperAdminTenantsPage() {
       return () => unsub();
     } catch (e) {
       console.warn('Could not register user requests snapshot:', e);
+    }
+  }, [firestore, isSuperAdmin]);
+
+  // Real-time live listener for incoming demo inquiries from website
+  useEffect(() => {
+    if (!firestore || !isSuperAdmin) return;
+    try {
+      const unsub = onSnapshot(collection(firestore, 'demo_requests'), (snapshot) => {
+        if (!snapshot.empty) {
+          const liveDemos = (snapshot.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          })) as DemoRequest[]).sort((a, b) => {
+            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return timeB - timeA;
+          });
+          setDemoRequests(liveDemos);
+        }
+      }, (err) => {
+        console.warn('Live demo requests listener notice:', err);
+      });
+      return () => unsub();
+    } catch (e) {
+      console.warn('Could not register demo requests snapshot:', e);
     }
   }, [firestore, isSuperAdmin]);
 
@@ -589,6 +646,53 @@ export default function SuperAdminTenantsPage() {
     } finally {
       setIsSavingModules(false);
     }
+  };
+
+  // Demo Request Handlers
+  const handleUpdateDemoStatus = async (
+    requestId: string,
+    status: 'pending' | 'contacted' | 'provisioned'
+  ) => {
+    try {
+      fetch('/api/demo-request', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId, status }),
+      }).catch((e) => console.warn('Demo status patch note:', e));
+
+      if (firestore) {
+        const timestampField = status === 'contacted' ? 'contactedAt' : 'provisionedAt';
+        await updateDoc(doc(firestore, 'demo_requests', requestId), {
+          status,
+          [timestampField]: new Date().toISOString(),
+        }).catch(() => {});
+      }
+
+      setDemoRequests((prev) =>
+        prev.map((d) => (d.id === requestId ? { ...d, status } : d))
+      );
+      toast({
+        title: 'Status Updated',
+        description: `Demo request status updated to ${status.toUpperCase()}.`,
+      });
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Update Failed',
+        description: err.message,
+      });
+    }
+  };
+
+  const handleProvisionFromDemo = (demo: DemoRequest) => {
+    handleTenantNameChange(demo.company);
+    setAdminEmail(demo.email);
+    const names = (demo.name || '').trim().split(' ');
+    setAdminFirstName(names[0] || 'User');
+    setAdminLastName(names.slice(1).join(' ') || '');
+    setNewTenantPlan(demo.tier === 'ultra' ? 'ultra' : demo.tier === 'pro' ? 'pro' : 'demo');
+    setIsCreateTenantOpen(true);
+    handleUpdateDemoStatus(demo.id, 'provisioned');
   };
 
   // 3. Toggle Tenant Access (Active <-> Suspended)
@@ -899,7 +1003,156 @@ export default function SuperAdminTenantsPage() {
             <p className="text-[11px] text-muted-foreground">{userRequests.length} total submitted</p>
           </CardContent>
         </Card>
+
+        <Card className={demoRequests.filter((r) => r.status === 'pending').length > 0 ? 'border-primary/50 bg-primary/5' : ''}>
+          <CardHeader className="pb-2">
+            <CardDescription className="text-xs font-medium flex items-center gap-1.5">
+              <Calendar className="h-4 w-4 text-primary" /> Demo Inquiries
+            </CardDescription>
+            <CardTitle className="text-2xl font-bold flex items-center gap-2">
+              {demoRequests.filter((r) => r.status === 'pending').length}
+              {demoRequests.filter((r) => r.status === 'pending').length > 0 && (
+                <Badge className="bg-primary text-primary-foreground text-[10px] py-0 px-1.5 font-bold">New</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-[11px] text-muted-foreground">{demoRequests.length} website inquiries</p>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Website Demo Requests from Landing Page */}
+      <Card id="demos" className="border-border shadow-sm">
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-primary" />
+                  Website Demo & Onboarding Inquiries
+                </CardTitle>
+                {demoRequests.filter((r) => r.status === 'pending').length > 0 && (
+                  <Badge className="bg-primary text-primary-foreground font-bold text-xs">
+                    {demoRequests.filter((r) => r.status === 'pending').length} Pending
+                  </Badge>
+                )}
+              </div>
+              <CardDescription>
+                Inquiries submitted by prospective developers from the EstateFlow landing page. Click "Provision Workspace" to pre-fill their company and admin account.
+              </CardDescription>
+            </div>
+            <Button variant="ghost" size="sm" onClick={loadData} disabled={isLoadingData}>
+              {isLoadingData ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Refresh
+            </Button>
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          {demoRequests.length === 0 ? (
+            <div className="text-center py-8 border border-dashed rounded-lg bg-muted/10 space-y-2">
+              <Calendar className="h-8 w-8 text-muted-foreground mx-auto" />
+              <p className="text-sm font-semibold text-foreground">No demo inquiries yet</p>
+              <p className="text-xs text-muted-foreground">
+                When prospective clients submit the "Request a Demo" form on your website, they will appear here and trigger an email to info@remotizedit.com.
+              </p>
+            </div>
+          ) : (
+            <div className="border rounded-lg overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Company / Prospect</TableHead>
+                    <TableHead>Contact Person</TableHead>
+                    <TableHead>Scale & Tier</TableHead>
+                    <TableHead>Requirements / Notes</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {demoRequests.map((demo) => {
+                    const isPending = demo.status === 'pending';
+                    const isContacted = demo.status === 'contacted';
+                    const isProvisioned = demo.status === 'provisioned';
+                    return (
+                      <TableRow key={demo.id}>
+                        <TableCell>
+                          <div className="font-semibold text-foreground text-xs">{demo.company}</div>
+                          {demo.phone && (
+                            <span className="text-[11px] text-muted-foreground">{demo.phone}</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium text-foreground text-xs">{demo.name}</div>
+                          <div className="text-xs text-muted-foreground">{demo.email}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5">
+                            <Badge variant="outline" className="text-[10px] uppercase font-bold w-fit">
+                              {demo.tier}
+                            </Badge>
+                            <span className="text-[10px] text-muted-foreground">{demo.projectCount || '1-3 Projects'}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-xs">
+                          {demo.notes ? (
+                            <p className="text-[11px] text-muted-foreground line-clamp-2 italic">"{demo.notes}"</p>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground/60">&ndash;</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {new Date(demo.createdAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={isPending ? 'default' : isProvisioned ? 'secondary' : 'outline'}
+                            className={
+                              isPending
+                                ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px]'
+                                : isProvisioned
+                                ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[10px]'
+                                : 'text-[10px] text-muted-foreground'
+                            }
+                          >
+                            {demo.status.toUpperCase()}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isPending && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs"
+                                onClick={() => handleUpdateDemoStatus(demo.id, 'contacted')}
+                              >
+                                Mark Contacted
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="h-7 text-xs bg-primary text-primary-foreground gap-1"
+                              onClick={() => handleProvisionFromDemo(demo)}
+                            >
+                              <PlusCircle className="h-3 w-3" />
+                              Provision
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* User Access Requests from Tenants */}
       <Card className="border-border shadow-sm">

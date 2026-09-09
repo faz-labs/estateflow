@@ -621,3 +621,188 @@ export async function updateUserRequestStatusDirectly(
 
   return true;
 }
+
+/**
+ * Direct REST creation for demo requests.
+ */
+export async function createDemoRequestDirectly(data: {
+  name: string;
+  email: string;
+  company: string;
+  phone?: string;
+  projectCount?: string;
+  tier: string;
+  notes?: string;
+}): Promise<{ success: boolean; id: string }> {
+  const credentials = getAdminServiceAccountCredentials();
+  if (!credentials) {
+    throw new Error('Service account credentials unavailable for creating demo request.');
+  }
+
+  const { GoogleAuth } = await import('google-auth-library');
+  const auth = new GoogleAuth({
+    credentials,
+    scopes: ['https://www.googleapis.com/auth/datastore'],
+  });
+
+  const client = await auth.getClient();
+  const tokenObj = await client.getAccessToken();
+  const token = tokenObj.token;
+
+  if (!token) {
+    throw new Error('Failed to acquire token.');
+  }
+
+  const projectId = credentials.project_id || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'studio-907320032-3bcaf';
+  const restUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/demo_requests`;
+
+  const restRes = await fetch(restUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      fields: {
+        name: { stringValue: data.name },
+        email: { stringValue: data.email },
+        company: { stringValue: data.company },
+        phone: { stringValue: data.phone || '' },
+        projectCount: { stringValue: data.projectCount || '' },
+        tier: { stringValue: data.tier || 'demo' },
+        notes: { stringValue: data.notes || '' },
+        status: { stringValue: 'pending' },
+        createdAt: { stringValue: new Date().toISOString() },
+      },
+    }),
+  });
+
+  const resData = await restRes.json();
+  if (!restRes.ok) {
+    throw new Error(resData.error?.message || 'Failed to write demo request.');
+  }
+
+  const docPath = resData.name || '';
+  const docId = docPath.split('/').pop() || 'demo_' + Date.now();
+
+  return { success: true, id: docId };
+}
+
+/**
+ * Direct REST query for all demo requests.
+ */
+export async function getDemoRequestsDirectly(): Promise<any[]> {
+  const credentials = getAdminServiceAccountCredentials();
+  if (!credentials) {
+    throw new Error('Service account credentials unavailable.');
+  }
+
+  const { GoogleAuth } = await import('google-auth-library');
+  const auth = new GoogleAuth({
+    credentials,
+    scopes: ['https://www.googleapis.com/auth/datastore'],
+  });
+
+  const client = await auth.getClient();
+  const tokenObj = await client.getAccessToken();
+  const token = tokenObj.token;
+
+  if (!token) {
+    throw new Error('Failed to acquire token.');
+  }
+
+  const projectId = credentials.project_id || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  const restUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/demo_requests?pageSize=100`;
+
+  const restRes = await fetch(restUrl, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    cache: 'no-store',
+  });
+
+  if (!restRes.ok) {
+    return [];
+  }
+
+  const data = await restRes.json();
+  const documents = data.documents || [];
+
+  const parseValue = (val: any) => {
+    if (!val) return '';
+    if (val.stringValue !== undefined) return val.stringValue;
+    if (val.integerValue !== undefined) return Number(val.integerValue);
+    return '';
+  };
+
+  const requests = documents.map((doc: any) => {
+    const id = (doc.name || '').split('/').pop() || '';
+    const fields = doc.fields || {};
+    return {
+      id,
+      name: parseValue(fields.name),
+      email: parseValue(fields.email),
+      company: parseValue(fields.company),
+      phone: parseValue(fields.phone),
+      projectCount: parseValue(fields.projectCount),
+      tier: parseValue(fields.tier) || 'demo',
+      notes: parseValue(fields.notes),
+      status: parseValue(fields.status) || 'pending',
+      createdAt: parseValue(fields.createdAt) || doc.createTime || new Date().toISOString(),
+      contactedAt: parseValue(fields.contactedAt),
+      provisionedAt: parseValue(fields.provisionedAt),
+    };
+  });
+
+  return requests.sort((a: any, b: any) => {
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return timeB - timeA;
+  });
+}
+
+/**
+ * Direct REST status update for demo request.
+ */
+export async function updateDemoRequestStatusDirectly(
+  requestId: string,
+  status: 'pending' | 'contacted' | 'provisioned'
+): Promise<boolean> {
+  const credentials = getAdminServiceAccountCredentials();
+  if (!credentials) return false;
+
+  const { GoogleAuth } = await import('google-auth-library');
+  const auth = new GoogleAuth({
+    credentials,
+    scopes: ['https://www.googleapis.com/auth/datastore'],
+  });
+
+  const client = await auth.getClient();
+  const tokenObj = await client.getAccessToken();
+  const token = tokenObj.token;
+
+  if (!token) return false;
+
+  const projectId = credentials.project_id || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  const now = new Date().toISOString();
+  const timestampField = status === 'contacted' ? 'contactedAt' : 'provisionedAt';
+
+  const restUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/demo_requests/${requestId}?updateMask.fieldPaths=status&updateMask.fieldPaths=${timestampField}`;
+
+  const restRes = await fetch(restUrl, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      fields: {
+        status: { stringValue: status },
+        [timestampField]: { stringValue: now },
+      },
+    }),
+  });
+
+  return restRes.ok;
+}
