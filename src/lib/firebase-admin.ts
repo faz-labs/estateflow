@@ -4,27 +4,70 @@ import type { Firestore } from 'firebase-admin/firestore';
 
 /**
  * Lazy and resilient Firebase Admin SDK initializer.
- * Avoids crashing Next.js serverless functions during module resolution.
+ * Supports multiple formats (raw JSON, quoted JSON, Base64 JSON, or clientEmail + privateKey env vars).
  */
 let appInstance: App | null = null;
 let adminAuthInstance: Auth | null = null;
 let adminFirestoreInstance: Firestore | null = null;
-let initAttempted = false;
+
+function parseServiceAccount(rawStr: string): any {
+  let str = rawStr.trim();
+  // Strip surrounding quotes if pasted with quotes
+  if (
+    (str.startsWith("'") && str.endsWith("'")) ||
+    (str.startsWith('"') && str.endsWith('"'))
+  ) {
+    str = str.slice(1, -1).trim();
+  }
+
+  // Support base64 encoded service account JSON
+  if (!str.startsWith('{')) {
+    try {
+      const decoded = Buffer.from(str, 'base64').toString('utf8');
+      if (decoded.trim().startsWith('{')) {
+        str = decoded.trim();
+      }
+    } catch {}
+  }
+
+  // 1. Direct JSON.parse
+  try {
+    return JSON.parse(str);
+  } catch (e1: any) {
+    // 2. Try sanitizing unescaped newlines
+    try {
+      const sanitized = str.replace(/[\r\n]+/g, ' ');
+      return JSON.parse(sanitized);
+    } catch (e2) {
+      // 3. Regex extraction fallback for resilient parsing
+      const emailMatch = str.match(/"client_email"\s*:\s*"([^"]+)"/);
+      const keyMatch = str.match(/"private_key"\s*:\s*"((?:[^"\\]|\\.)+)"/);
+      const projectMatch = str.match(/"project_id"\s*:\s*"([^"]+)"/);
+      if (emailMatch && keyMatch) {
+        return {
+          client_email: emailMatch[1],
+          private_key: keyMatch[1].replace(/\\n/g, '\n'),
+          project_id: projectMatch ? projectMatch[1] : undefined,
+        };
+      }
+      throw e1;
+    }
+  }
+}
 
 export function initFirebaseAdmin(): {
   app: App | null;
   adminAuth: Auth | null;
   adminFirestore: Firestore | null;
 } {
-  if (initAttempted) {
+  // If already successfully initialized, return cached instances
+  if (appInstance && adminAuthInstance) {
     return {
       app: appInstance,
       adminAuth: adminAuthInstance,
       adminFirestore: adminFirestoreInstance,
     };
   }
-
-  initAttempted = true;
 
   try {
     // Dynamic require so Next.js does not crash during static analysis or cold start
@@ -43,36 +86,16 @@ export function initFirebaseAdmin(): {
 
       if (serviceAccountJson) {
         try {
-          let trimmed = serviceAccountJson.trim();
-          // Unwrap quotes if pasted with surrounding quotes in Vercel
-          if (
-            (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
-            (trimmed.startsWith('"') && trimmed.endsWith('"'))
-          ) {
-            trimmed = trimmed.slice(1, -1).trim();
+          const parsed = parseServiceAccount(serviceAccountJson);
+          if (parsed.private_key) {
+            parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
           }
-
-          if (trimmed.startsWith('{')) {
-            const parsed = JSON.parse(trimmed);
-            if (parsed.private_key) {
-              parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
-            }
-            appInstance = initializeApp({
-              credential: cert(parsed),
-              projectId: parsed.project_id || projectId,
-            });
-          } else if (trimmed.includes('BEGIN PRIVATE KEY') && clientEmail) {
-            appInstance = initializeApp({
-              credential: cert({
-                projectId,
-                clientEmail,
-                privateKey: trimmed.replace(/\\n/g, '\n'),
-              }),
-              projectId,
-            });
-          }
-        } catch (parseErr) {
-          console.warn('Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY JSON:', parseErr);
+          appInstance = initializeApp({
+            credential: cert(parsed),
+            projectId: parsed.project_id || projectId,
+          });
+        } catch (parseErr: any) {
+          console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY:', parseErr.message);
         }
       } else if (clientEmail && privateKey) {
         appInstance = initializeApp({
@@ -90,8 +113,8 @@ export function initFirebaseAdmin(): {
       adminAuthInstance = getAuth(appInstance);
       adminFirestoreInstance = getFirestore(appInstance);
     }
-  } catch (err) {
-    console.warn('Firebase Admin lazy initialization note (falling back to REST/custom tokens):', err);
+  } catch (err: any) {
+    console.warn('Firebase Admin initialization error:', err.message);
   }
 
   return {

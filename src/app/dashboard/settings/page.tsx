@@ -256,10 +256,7 @@ export default function SettingsPage() {
     setIsSubmittingRequest(true);
     try {
       const normalizedReqEmail = requestEmail.trim().toLowerCase();
-
-      // Submit user access request to Firestore for platform admin review & provisioning
-      const reqRef = collection(firestore, 'user_requests');
-      await addDoc(reqRef, {
+      const payload = {
         tenantId,
         companyName,
         requestedByEmail: user?.email || '',
@@ -268,9 +265,24 @@ export default function SettingsPage() {
         targetName: requestName.trim(),
         targetRole: requestRole,
         notes: requestNotes.trim(),
-        status: 'pending',
-        createdAt: new Date().toISOString(),
+      };
+
+      // 1. Submit via server API to bypass undeployed client security rules
+      const res = await fetch('/api/user-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
+
+      if (!res.ok) {
+        // 2. Fallback to direct client-side Firestore
+        const reqRef = collection(firestore, 'user_requests');
+        await addDoc(reqRef, {
+          ...payload,
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+        });
+      }
 
       toast({
         title: 'Request Submitted!',

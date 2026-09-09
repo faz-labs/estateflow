@@ -183,59 +183,37 @@ export default function LoginPage() {
       return;
     }
 
-    setIsSendingReset(true);
+    const normalizedEmail = forgotEmail.trim().toLowerCase();
 
+    // 1. Optimistic instant UI response: Close modal and confirm immediately
+    setIsForgotOpen(false);
+    setForgotEmail('');
+    toast({
+      title: 'Reset Link Sent',
+      description: `A password reset link has been sent to ${normalizedEmail}. Please check your inbox.`,
+    });
+
+    // 2. Dispatch the email in the background
     try {
-      const normalizedEmail = forgotEmail.trim().toLowerCase();
-
-      // Dispatch via custom email server (Mailcow SMTP)
-      const response = await fetch('/api/auth/reset-password', {
+      fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: normalizedEmail }),
-      });
-
-      const contentType = response.headers.get('content-type') || '';
-      let data: any = null;
-
-      if (contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        const errorText = await response.text();
-        console.error('Non-JSON server response:', errorText);
-        throw new Error(
-          `Server returned an error (${response.status}): ${errorText.slice(0, 150) || 'Internal error'}`
-        );
-      }
-
-      if (!response.ok) {
-        throw new Error(data?.error || `Server responded with status ${response.status}`);
-      }
-
-      if (data.warning) {
-        toast({
-          title: 'Configuration Notice',
-          description: data.warning,
+      })
+        .then(async (response) => {
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const data = await response.json();
+            if (!response.ok) {
+              console.error('Password reset background error:', data.error);
+            }
+          }
+        })
+        .catch((err) => {
+          console.error('Background password reset error:', err);
         });
-      } else {
-        toast({
-          title: 'Reset Link Sent',
-          description: data.message || `A password reset link has been sent to ${normalizedEmail}. Please check your inbox.`,
-        });
-      }
-
-      setIsForgotOpen(false);
-      setForgotEmail('');
-
     } catch (err: any) {
       console.error('Password Reset Error:', err);
-      toast({
-        variant: 'destructive',
-        title: 'Reset Request Failed',
-        description: err.message || 'Could not send reset email. Please try again.',
-      });
-    } finally {
-      setIsSendingReset(false);
     }
   };
 

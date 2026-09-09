@@ -156,7 +156,7 @@ export async function POST(request: Request) {
             <p style="font-size: 12px; color: #64748b;">If the button above does not work, copy and paste this link into your browser:<br><span style="word-break: break-all; color: #2563eb;">${resetUrl}</span></p>
             <p style="font-size: 12px; color: #64748b;">This link is valid for 1 hour. If you did not request this, you can safely ignore this email.</p>
             <div class="footer">
-              EstateFlow Enterprise Real Estate Platform &bull; Sent securely via Mailcow SMTP (${smtpFromEmail})
+              EstateFlow Enterprise Real Estate Platform &bull; Official Account Security Notification
             </div>
           </div>
         </body>
@@ -173,15 +173,15 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `A secure password reset link has been dispatched to ${normalizedEmail} via Mailcow SMTP.`,
+      message: `A secure password reset link has been dispatched to ${normalizedEmail}.`,
       configured: true,
     });
 
   } catch (error: any) {
-    console.error('Mailcow SMTP Send Error:', error);
+    console.error('Password Reset Send Error:', error);
     return NextResponse.json(
       { 
-        error: error.message || 'Failed to send reset email through Mailcow SMTP.',
+        error: error.message || 'Failed to send reset email.',
         details: error.code || 'SMTP_TRANSACTION_FAILED'
       },
       { 

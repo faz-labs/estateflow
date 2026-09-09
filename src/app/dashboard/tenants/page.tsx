@@ -63,12 +63,28 @@ import {
   Send,
   Eye,
   Pencil,
+  UserCheck,
+  XCircle,
 } from 'lucide-react';
 import {
   SUPPORTED_CURRENCIES,
   getCurrency,
   DEFAULT_CURRENCY_CODE,
 } from '@/lib/currencies';
+
+export interface UserProvisionRequest {
+  id: string;
+  tenantId: string;
+  companyName: string;
+  requestedByEmail: string;
+  requestedByName: string;
+  targetEmail: string;
+  targetName: string;
+  targetRole: 'Admin' | 'Accountant' | 'Viewer';
+  notes?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+}
 
 export default function SuperAdminTenantsPage() {
   const { isSuperAdmin, isLoading: isProfileLoading } = useUserProfile();
@@ -79,6 +95,8 @@ export default function SuperAdminTenantsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [notices, setNotices] = useState<TenantNotice[]>([]);
+  const [userRequests, setUserRequests] = useState<UserProvisionRequest[]>([]);
+  const [selectedRequestToProvision, setSelectedRequestToProvision] = useState<UserProvisionRequest | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [copiedTenantId, setCopiedTenantId] = useState<string | null>(null);
 
@@ -149,6 +167,19 @@ export default function SuperAdminTenantsPage() {
         getDocs(query(collection(firestore, 'notices'), orderBy('createdAt', 'desc'))),
       ]);
 
+      let loadedRequests: UserProvisionRequest[] = [];
+      try {
+        const userRequestsSnap = await getDocs(
+          query(collection(firestore, 'user_requests'), orderBy('createdAt', 'desc'))
+        );
+        loadedRequests = userRequestsSnap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as UserProvisionRequest[];
+      } catch (reqErr) {
+        console.warn('User requests load note:', reqErr);
+      }
+
       const loadedTenants: Tenant[] = tenantsSnap.docs.map((d) => {
         const data = d.data();
         return {
@@ -173,6 +204,7 @@ export default function SuperAdminTenantsPage() {
       setTenants(loadedTenants);
       setUsers(loadedUsers);
       setNotices(loadedNotices);
+      setUserRequests(loadedRequests);
     } catch (err: any) {
       console.error('Error fetching SuperAdmin data:', err);
       toast({
@@ -335,6 +367,24 @@ export default function SuperAdminTenantsPage() {
         }, { merge: true });
       }
 
+      // If provisioned from a pending request, mark it as approved
+      if (selectedRequestToProvision) {
+        try {
+          await updateDoc(doc(firestore, 'user_requests', selectedRequestToProvision.id), {
+            status: 'approved',
+            approvedAt: new Date().toISOString(),
+          });
+          setUserRequests((prev) =>
+            prev.map((r) =>
+              r.id === selectedRequestToProvision.id ? { ...r, status: 'approved' } : r
+            )
+          );
+        } catch (e) {
+          console.warn('Failed to update request status:', e);
+        }
+        setSelectedRequestToProvision(null);
+      }
+
       toast({
         title: 'User Account Created!',
         description: `${userEmail} has been added. They will be required to change their password on first login.`,
@@ -356,6 +406,38 @@ export default function SuperAdminTenantsPage() {
       });
     } finally {
       setIsAddingUser(false);
+    }
+  };
+
+  // Handle approving a user request: opens Add User dialog pre-filled
+  const handleApproveRequest = (req: UserProvisionRequest) => {
+    setSelectedRequestToProvision(req);
+    setUserTenantId(req.tenantId);
+    setUserEmail(req.targetEmail);
+    const nameParts = (req.targetName || '').trim().split(' ');
+    setUserFirstName(nameParts[0] || 'User');
+    setUserLastName(nameParts.slice(1).join(' ') || '');
+    setUserRole(req.targetRole || 'Viewer');
+    setUserPassword('');
+    setIsAddUserOpen(true);
+  };
+
+  // Handle rejecting a user request
+  const handleRejectRequest = async (requestId: string) => {
+    try {
+      await updateDoc(doc(firestore, 'user_requests', requestId), {
+        status: 'rejected',
+        rejectedAt: new Date().toISOString(),
+      });
+      setUserRequests((prev) =>
+        prev.map((r) => (r.id === requestId ? { ...r, status: 'rejected' } : r))
+      );
+      toast({
+        title: 'Request Marked Rejected',
+        description: 'The user access request status has been updated.',
+      });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Action Failed', description: err.message });
     }
   };
 
@@ -606,7 +688,7 @@ export default function SuperAdminTenantsPage() {
       </div>
 
       {/* KPI Overview */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="text-xs font-medium flex items-center gap-1.5">
@@ -660,7 +742,155 @@ export default function SuperAdminTenantsPage() {
             <p className="text-[11px] text-muted-foreground">Platform accounts provisioned</p>
           </CardContent>
         </Card>
+
+        <Card className={userRequests.filter((r) => r.status === 'pending').length > 0 ? 'border-amber-500/50 bg-amber-500/5' : ''}>
+          <CardHeader className="pb-2">
+            <CardDescription className="text-xs font-medium flex items-center gap-1.5">
+              <UserPlus className="h-4 w-4 text-purple-500" /> User Requests
+            </CardDescription>
+            <CardTitle className="text-2xl font-bold flex items-center gap-2">
+              {userRequests.filter((r) => r.status === 'pending').length}
+              {userRequests.filter((r) => r.status === 'pending').length > 0 && (
+                <Badge className="bg-amber-500 text-slate-950 text-[10px] py-0 px-1.5 font-bold">New</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-[11px] text-muted-foreground">{userRequests.length} total submitted</p>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* User Access Requests from Tenants */}
+      <Card className="border-border shadow-sm">
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <UserPlus className="h-5 w-5 text-primary" />
+                  User Provisioning Requests
+                </CardTitle>
+                {userRequests.filter((r) => r.status === 'pending').length > 0 && (
+                  <Badge className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs">
+                    {userRequests.filter((r) => r.status === 'pending').length} Pending
+                  </Badge>
+                )}
+              </div>
+              <CardDescription>
+                Colleague access requests submitted by tenant administrators from their Settings panel. Click "Provision" to approve and set initial credentials.
+              </CardDescription>
+            </div>
+            <Button variant="ghost" size="sm" onClick={loadData} disabled={isLoadingData}>
+              {isLoadingData ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Refresh
+            </Button>
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          {userRequests.length === 0 ? (
+            <div className="text-center py-8 border border-dashed rounded-lg bg-muted/10 space-y-2">
+              <Users className="h-8 w-8 text-muted-foreground mx-auto" />
+              <p className="text-sm font-semibold text-foreground">No user requests submitted yet</p>
+              <p className="text-xs text-muted-foreground">
+                When tenant administrators request new team members from their Settings page, they will appear here.
+              </p>
+            </div>
+          ) : (
+            <div className="border rounded-lg overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Organization</TableHead>
+                    <TableHead>Requested Colleague</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Requested By</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {userRequests.map((req) => {
+                    const isPending = req.status === 'pending';
+                    const isApproved = req.status === 'approved';
+                    return (
+                      <TableRow key={req.id}>
+                        <TableCell>
+                          <div className="font-semibold text-foreground text-xs">{req.companyName}</div>
+                          <span className="text-[10px] text-muted-foreground font-mono">{req.tenantId}</span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium text-foreground text-xs">{req.targetName || 'N/A'}</div>
+                          <div className="text-xs text-muted-foreground">{req.targetEmail}</div>
+                          {req.notes && (
+                            <p className="text-[11px] text-muted-foreground/80 italic mt-0.5">"{req.notes}"</p>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={req.targetRole === 'Admin' ? 'default' : req.targetRole === 'Accountant' ? 'secondary' : 'outline'}
+                            className="text-[10px]"
+                          >
+                            {req.targetRole}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-xs text-foreground">{req.requestedByName || 'Admin'}</div>
+                          <div className="text-[10px] text-muted-foreground">{req.requestedByEmail}</div>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {new Date(req.createdAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={isPending ? 'default' : isApproved ? 'secondary' : 'outline'}
+                            className={
+                              isPending
+                                ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                                : isApproved
+                                ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                                : 'text-muted-foreground'
+                            }
+                          >
+                            {req.status.toUpperCase()}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {isPending ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                                onClick={() => handleApproveRequest(req)}
+                              >
+                                <UserCheck className="h-3.5 w-3.5" />
+                                Provision
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                                onClick={() => handleRejectRequest(req.id)}
+                              >
+                                Decline
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Processed</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Tenants Management Table */}
       <Card>
