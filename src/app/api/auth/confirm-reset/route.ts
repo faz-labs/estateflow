@@ -7,7 +7,7 @@ import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
  */
 export async function POST(request: Request) {
   try {
-    const { token, newPassword } = await request.json();
+    const { token, newPassword, email: requestEmail } = await request.json();
 
     if (!token || !newPassword) {
       return NextResponse.json(
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
         );
       }
       const data = tokenDoc.data();
-      email = data?.email || '';
+      email = data?.email || requestEmail || '';
       expiresAt = Number(data?.expiresAt || 0);
       used = Boolean(data?.used);
     } else {
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       }
       const tokenData = await tokenRes.json();
       const fields = tokenData.fields;
-      email = fields?.email?.stringValue || '';
+      email = fields?.email?.stringValue || requestEmail || '';
       expiresAt = parseInt(fields?.expiresAt?.integerValue || fields?.expiresAt?.stringValue || '0', 10);
       used = fields?.used?.booleanValue || false;
     }
@@ -83,6 +83,16 @@ export async function POST(request: Request) {
         await adminAuth.updateUser(userRecord.uid, {
           password: newPassword,
         });
+
+        // Clear mustChangePassword if set
+        if (adminFirestore) {
+          try {
+            await adminFirestore.collection('users').doc(userRecord.uid).set(
+              { mustChangePassword: false },
+              { merge: true }
+            );
+          } catch {}
+        }
       } catch (authErr: any) {
         console.error('Failed to update password via Firebase Admin:', authErr);
         return NextResponse.json(

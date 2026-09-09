@@ -62,8 +62,27 @@ export async function POST(request: Request) {
 
     // Determine the branded reset URL:
     // Option A: Try generating official Firebase oobCode via Admin SDK (suppresses Google's email!)
-    let resetUrl = '';
+    // 1. Always generate a secure server-managed token (valid for 1 hour)
+    const customToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = Date.now() + 1000 * 60 * 60; // 1 hour validity
 
+    const adminFirestore = getAdminFirestore();
+    if (adminFirestore) {
+      try {
+        await adminFirestore.collection('password_resets').doc(customToken).set({
+          token: customToken,
+          email: normalizedEmail,
+          expiresAt,
+          used: false,
+          createdAt: new Date().toISOString(),
+        });
+      } catch (fsErr) {
+        console.warn('Failed to store custom reset token in Admin Firestore:', fsErr);
+      }
+    }
+
+    // 2. Also attempt generating Google Firebase oobCode if available
+    let oobCode = '';
     const adminAuth = getAdminAuth();
     if (adminAuth) {
       try {
@@ -74,57 +93,15 @@ export async function POST(request: Request) {
           ),
         ]);
         const urlObj = new URL(link);
-        const oobCode = urlObj.searchParams.get('oobCode');
-        if (oobCode) {
-          resetUrl = `${appUrl}/reset-password?oobCode=${encodeURIComponent(oobCode)}&email=${encodeURIComponent(normalizedEmail)}`;
-        }
+        oobCode = urlObj.searchParams.get('oobCode') || '';
       } catch (adminErr) {
-        console.warn('Admin SDK reset link attempt note (using custom token fallback):', adminErr);
+        console.warn('Admin SDK reset link note:', adminErr);
       }
     }
 
-    // Option B: Fallback to custom secure token in Firestore via Admin SDK
-    if (!resetUrl) {
-      const customToken = crypto.randomBytes(32).toString('hex');
-      const expiresAt = Date.now() + 1000 * 60 * 60; // 1 hour validity
-
-      const adminFirestore = getAdminFirestore();
-      if (adminFirestore) {
-        try {
-          await adminFirestore.collection('password_resets').doc(customToken).set({
-            token: customToken,
-            email: normalizedEmail,
-            expiresAt,
-            used: false,
-            createdAt: new Date().toISOString(),
-          });
-        } catch (fsErr) {
-          console.warn('Failed to store custom reset token in Admin Firestore:', fsErr);
-        }
-      } else if (projectId) {
-        try {
-          const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/password_resets/${customToken}`;
-          await fetch(docUrl, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              fields: {
-                token: { stringValue: customToken },
-                email: { stringValue: normalizedEmail },
-                expiresAt: { integerValue: expiresAt.toString() },
-                used: { booleanValue: false },
-                createdAt: { stringValue: new Date().toISOString() },
-              },
-            }),
-            signal: AbortSignal.timeout(3000),
-          });
-        } catch (fsErr) {
-          console.warn('Failed to store custom reset token in Firestore:', fsErr);
-        }
-      }
-
-      resetUrl = `${appUrl}/reset-password?token=${customToken}&email=${encodeURIComponent(normalizedEmail)}`;
-    }
+    // 3. Construct unified branded reset URL with both token and oobCode
+    const oobParam = oobCode ? `&oobCode=${encodeURIComponent(oobCode)}` : '';
+    const resetUrl = `${appUrl}/reset-password?token=${customToken}&email=${encodeURIComponent(normalizedEmail)}${oobParam}`;
 
     // Initialize Mailcow SMTP transporter
     const transporter = nodemailer.createTransport({

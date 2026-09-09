@@ -40,7 +40,8 @@ function ResetPasswordContent() {
         return;
       }
 
-      if (oobCode && auth) {
+      // If we only have oobCode without a server token, test it with client SDK
+      if (oobCode && auth && !token) {
         try {
           const verifiedEmail = await verifyPasswordResetCode(auth, oobCode);
           setTargetEmail(verifiedEmail);
@@ -48,13 +49,15 @@ function ResetPasswordContent() {
           console.error('oobCode verification failed:', err);
           setValidationError('This password reset link has expired or has already been used. Please request a new one.');
         }
+      } else if (emailParam) {
+        setTargetEmail(emailParam);
       }
 
       setIsValidating(false);
     }
 
     validate();
-  }, [oobCode, token, auth]);
+  }, [oobCode, token, auth, emailParam]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,15 +80,17 @@ function ResetPasswordContent() {
     setIsSubmitting(true);
 
     try {
-      if (oobCode && auth) {
-        // Native Firebase Auth reset via oobCode
-        await confirmPasswordReset(auth, oobCode, newPassword);
-      } else if (token) {
-        // Custom token verification via server route
+      if (token) {
+        // Preferred resilient flow: Server-managed token via Firebase Admin
         const res = await fetch('/api/auth/confirm-reset', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, newPassword }),
+          body: JSON.stringify({
+            token,
+            newPassword,
+            email: targetEmail || emailParam,
+            oobCode,
+          }),
         });
 
         const contentType = res.headers.get('content-type') || '';
@@ -97,6 +102,9 @@ function ResetPasswordContent() {
         if (!res.ok) {
           throw new Error(data.error || 'Failed to reset password.');
         }
+      } else if (oobCode && auth) {
+        // Native Firebase Auth reset via oobCode
+        await confirmPasswordReset(auth, oobCode, newPassword);
       }
 
       setIsSuccess(true);
