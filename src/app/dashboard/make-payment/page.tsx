@@ -450,17 +450,20 @@ export default function MakePaymentPage() {
                     control={form.control}
                     name="vendorId"
                     render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>Vendor</FormLabel>
-                        <Combobox
-                          options={vendors?.map(v => ({ value: v.id, label: v.vendorName })) || []}
-                          value={field.value}
-                          onChange={field.onChange}
-                          placeholder="Select a vendor"
-                          searchPlaceholder="Search vendors..."
-                          emptyText="No vendors found."
-                          disabled={vendorsLoading}
-                        />
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Vendor</FormLabel>
+                        <FormControl>
+                          <Combobox
+                            className="h-10 w-full"
+                            options={vendors?.map(v => ({ value: v.id, label: v.vendorName })) || []}
+                            value={field.value}
+                            onChange={field.onChange}
+                            placeholder="Select a vendor"
+                            searchPlaceholder="Search vendors..."
+                            emptyText="No vendors found."
+                            disabled={vendorsLoading}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -469,17 +472,20 @@ export default function MakePaymentPage() {
                     control={form.control}
                     name="expenseId"
                     render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>Expense</FormLabel>
-                        <Combobox
-                          options={unpaidExpenses.map(e => ({ value: e.id, label: `${e.expenseId} - Due: ${formatCurrency(e.price - e.paidAmount)}` }))}
-                          value={field.value}
-                          onChange={field.onChange}
-                          placeholder="Select an unpaid expense"
-                          searchPlaceholder="Search expenses..."
-                          emptyText="No unpaid expenses for this vendor."
-                          disabled={!vendorId || unpaidExpenses.length === 0}
-                        />
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Expense</FormLabel>
+                        <FormControl>
+                          <Combobox
+                            className="h-10 w-full"
+                            options={unpaidExpenses.map(e => ({ value: e.id, label: `${e.expenseId} - Due: ${formatCurrency(e.price - e.paidAmount)}` }))}
+                            value={field.value}
+                            onChange={field.onChange}
+                            placeholder="Select an unpaid expense"
+                            searchPlaceholder="Search expenses..."
+                            emptyText="No unpaid expenses for this vendor."
+                            disabled={!vendorId || unpaidExpenses.length === 0}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -506,15 +512,15 @@ export default function MakePaymentPage() {
                 </div>
               </div>
               <Separator />
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
                  <FormField
                     control={form.control}
                     name="amountToPay"
                     render={({ field }) => (
-                        <FormItem>
-                        <FormLabel>Amount to Pay ({currencySymbol})</FormLabel>
+                        <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center truncate">Amount to Pay ({currencySymbol})</FormLabel>
                         <FormControl>
-                            <Input type="number" placeholder="0" {...field} disabled={!selectedExpense} />
+                            <Input type="number" placeholder="0" className="h-10" {...field} disabled={!selectedExpense} />
                         </FormControl>
                         <FormMessage />
                         </FormItem>
@@ -524,10 +530,10 @@ export default function MakePaymentPage() {
                     control={form.control}
                     name="paymentDate"
                     render={({ field }) => (
-                        <FormItem>
-                        <FormLabel>Payment Date</FormLabel>
+                        <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Payment Date</FormLabel>
                         <FormControl>
-                            <Input type="date" {...field} disabled={!selectedExpense} />
+                            <Input type="date" className="h-10" {...field} disabled={!selectedExpense} />
                         </FormControl>
                         <FormMessage />
                         </FormItem>
@@ -537,19 +543,22 @@ export default function MakePaymentPage() {
                     control={form.control}
                     name="paymentMethod"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Payment Method</FormLabel>
-                        <Combobox
-                          options={[
-                            { value: 'Cash', label: 'Cash' },
-                            { value: 'Cheque', label: 'Cheque' },
-                            { value: 'Bank Transfer', label: 'Bank Transfer' },
-                          ]}
-                          value={field.value}
-                          onChange={field.onChange}
-                          placeholder="Select a method"
-                          disabled={!selectedExpense}
-                        />
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Payment Method</FormLabel>
+                        <FormControl>
+                          <Combobox
+                            className="h-10 w-full"
+                            options={[
+                              { value: 'Cash', label: 'Cash' },
+                              { value: 'Cheque', label: 'Cheque' },
+                              { value: 'Bank Transfer', label: 'Bank Transfer' },
+                            ]}
+                            value={field.value}
+                            onChange={field.onChange}
+                            placeholder="Select a method"
+                            disabled={!selectedExpense}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -559,11 +568,12 @@ export default function MakePaymentPage() {
                 control={form.control}
                 name="reference"
                 render={({ field }) => (
-                    <FormItem>
-                    <FormLabel>Reference / Note</FormLabel>
+                    <FormItem className="flex flex-col justify-start space-y-2">
+                    <FormLabel className="h-5 flex items-center">Reference / Note</FormLabel>
                     <FormControl>
-                        <Input placeholder="Optional (e.g., Cheque No. or Purpose)" {...field} disabled={!selectedExpense} />
+                        <Input placeholder="Optional (e.g., Cheque No. or Purpose)" className="h-10" {...field} disabled={!selectedExpense} />
                     </FormControl>
+                    <FormMessage />
                     </FormItem>
                 )}
                 />
@@ -592,12 +602,12 @@ export default function MakePaymentPage() {
                         <Input
                             type="search"
                             placeholder="Search payments..."
-                            className="pl-8 sm:w-full lg:w-[300px]"
+                            className="pl-8 sm:w-full lg:w-[300px] h-10"
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                         />
                     </div>
-                     <Button variant="outline" onClick={handleExport} className="w-full sm:w-auto">
+                     <Button variant="outline" onClick={handleExport} className="w-full sm:w-auto h-10">
                         <Download className="mr-2 h-4 w-4" />
                         Export
                     </Button>

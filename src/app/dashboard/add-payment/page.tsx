@@ -95,7 +95,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Ban, Printer, MoreHorizontal, Pencil, Trash2, Eye, FileDown, Search, Download, Save } from 'lucide-react';
+import { Ban, Printer, MoreHorizontal, Pencil, Trash2, Eye, FileDown, Search, Download, Save, Loader2 } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Receipt } from '@/components/dashboard/receipt';
 import { EditPaymentForm } from '@/components/dashboard/payments/edit-payment-form';
@@ -139,6 +139,15 @@ export type EnrichedTransaction = InflowTransaction & {
   project?: Project;
 };
 
+export type CustomerFinancialSummary = {
+  totalPrice: number;
+  totalPaid: number;
+  totalDue: number;
+  isFlatSpecific?: boolean;
+  flatNumber?: string;
+  projectName?: string;
+};
+
 export default function AddPaymentPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
@@ -157,6 +166,13 @@ export default function AddPaymentPage() {
   const [selectedPayment, setSelectedPayment] = useState<EnrichedTransaction | null>(null);
   const [selectedPaymentForDelete, setSelectedPaymentForDelete] = useState<InflowTransaction | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+
+  // Financial summary states for selected customer/flat
+  const [customerFinancials, setCustomerFinancials] = useState<CustomerFinancialSummary | null>(null);
+  const [isCalculatingFinancials, setIsCalculatingFinancials] = useState(false);
+  const [customerSales, setCustomerSales] = useState<Sale[]>([]);
+  const [customerPaymentsByFlat, setCustomerPaymentsByFlat] = useState<Map<string, number>>(new Map());
+  const [totalCustomerPaid, setTotalCustomerPaid] = useState<number>(0);
 
   // Data fetching for form dropdowns
   const customersQuery = useMemoFirebase(
@@ -187,6 +203,7 @@ export default function AddPaymentPage() {
 
   const customerId = form.watch('customerId');
   const projectId = form.watch('projectId');
+  const flatId = form.watch('flatId');
   const paymentPurpose = form.watch('paymentPurpose');
 
   // Fetch recent transactions for the log
@@ -269,34 +286,136 @@ export default function AddPaymentPage() {
       form.setValue('projectId', '');
       form.setValue('flatId', '');
 
-      if (customerId && firestore && tenantId) {
+      if (!customerId || !firestore || !tenantId) {
+        setCustomerFinancials(null);
+        setCustomerSales([]);
+        setCustomerPaymentsByFlat(new Map());
+        setTotalCustomerPaid(0);
+        return;
+      }
+
+      setIsCalculatingFinancials(true);
+      try {
         // Find sales for the selected customer scoped to tenant
         const salesQuery = isSuperAdmin
           ? query(collection(firestore, 'sales'), where('customerId', '==', customerId))
           : query(collection(firestore, 'sales'), where('customerId', '==', customerId), where('tenantId', '==', tenantId));
         const salesSnap = await getDocs(salesQuery);
-        const sales = salesSnap.docs.map(doc => doc.data() as Sale);
+        const sales = salesSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as Sale));
+        setCustomerSales(sales);
 
         // Get unique project IDs from the sales
-        const projectIds = [...new Set(sales.map(s => s.projectId))];
+        const projectIds = [...new Set(sales.map(s => s.projectId).filter(Boolean))];
 
         if (projectIds.length > 0) {
           const projectsData: Project[] = [];
-          // Fetch project details for each unique project ID
           for (const pId of projectIds) {
-            const projectDoc = await getDocs(
-              isSuperAdmin
-                ? query(collection(firestore, 'projects'), where('id', '==', pId))
-                : query(collection(firestore, 'projects'), where('id', '==', pId), where('tenantId', '==', tenantId))
-            );
-            projectDoc.forEach(doc => projectsData.push(doc.data() as Project));
+            try {
+              const projectDoc = await getDoc(doc(firestore, 'projects', pId));
+              if (projectDoc.exists()) {
+                projectsData.push({ ...projectDoc.data(), id: projectDoc.id } as Project);
+              }
+            } catch (err) {
+              console.warn('Could not fetch project:', err);
+            }
           }
           setProjectsForCustomer(projectsData);
         }
+
+        // Fetch inflow payments for this customer across project subcollections
+        let paidSum = 0;
+        const flatPaidMap = new Map<string, number>();
+
+        for (const pId of projectIds) {
+          try {
+            const pQuery = query(
+              collection(firestore, `projects/${pId}/inflowTransactions`),
+              where('customerId', '==', customerId)
+            );
+            const pSnap = await getDocs(pQuery);
+            pSnap.forEach(d => {
+              const pData = d.data() as InflowTransaction;
+              const amt = pData.amount || 0;
+              paidSum += amt;
+              if (pData.flatId) {
+                flatPaidMap.set(pData.flatId, (flatPaidMap.get(pData.flatId) || 0) + amt);
+              }
+            });
+          } catch (pErr) {
+            console.warn(`Could not fetch payments for project ${pId}:`, pErr);
+          }
+        }
+
+        setTotalCustomerPaid(paidSum);
+        setCustomerPaymentsByFlat(flatPaidMap);
+
+        const totalPrice = sales.reduce((sum, s) => sum + (s.totalPrice || 0), 0);
+        const totalDue = Math.max(0, totalPrice - paidSum);
+
+        setCustomerFinancials({
+          totalPrice,
+          totalPaid: paidSum,
+          totalDue,
+          isFlatSpecific: false,
+        });
+
+        // Auto-fill amount if currently 0 and there is a due balance
+        if (totalDue > 0 && form.getValues('amount') === 0) {
+          form.setValue('amount', totalDue);
+        }
+      } catch (e) {
+        console.error('Error fetching customer financials/sales:', e);
+      } finally {
+        setIsCalculatingFinancials(false);
       }
     }
     fetchCustomerData();
   }, [customerId, firestore, form, tenantId, isSuperAdmin]);
+
+  // Dynamically update financial summary when a specific flat is selected
+  useEffect(() => {
+    if (!customerId) {
+      setCustomerFinancials(null);
+      return;
+    }
+
+    if (flatId && customerSales.length > 0) {
+      const flatSale = customerSales.find(s => s.flatId === flatId);
+      if (flatSale) {
+        const flatPrice = flatSale.totalPrice || 0;
+        const flatPaid = customerPaymentsByFlat.get(flatId) || 0;
+        const flatDue = Math.max(0, flatPrice - flatPaid);
+        const flatObj = flatsForProject.find(f => f.id === flatId);
+        const projectObj = projectsForCustomer.find(p => p.id === (flatSale.projectId || projectId));
+
+        setCustomerFinancials({
+          totalPrice: flatPrice,
+          totalPaid: flatPaid,
+          totalDue: flatDue,
+          isFlatSpecific: true,
+          flatNumber: flatObj?.flatNumber || 'Flat',
+          projectName: projectObj?.projectName || 'Project',
+        });
+
+        if (flatDue > 0) {
+          form.setValue('amount', flatDue);
+        }
+        return;
+      }
+    }
+
+    // Otherwise fallback to overall customer summary
+    if (customerSales.length > 0) {
+      const totalPrice = customerSales.reduce((sum, s) => sum + (s.totalPrice || 0), 0);
+      const totalDue = Math.max(0, totalPrice - totalCustomerPaid);
+      setCustomerFinancials({
+        totalPrice,
+        totalPaid: totalCustomerPaid,
+        totalDue,
+        isFlatSpecific: false,
+      });
+    }
+  }, [flatId, customerSales, customerPaymentsByFlat, totalCustomerPaid, flatsForProject, projectsForCustomer, projectId, customerId, form]);
 
   useEffect(() => {
     async function fetchProjectData() {
@@ -624,22 +743,25 @@ export default function AddPaymentPage() {
               
               <div className="space-y-4">
                 <h3 className="text-lg font-medium text-primary">Payment Details</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
                   <FormField
                     control={form.control}
                     name="customerId"
                     render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>Customer</FormLabel>
-                        <Combobox
-                          options={customers?.map(c => ({ value: c.id, label: c.fullName })) || []}
-                          value={field.value}
-                          onChange={field.onChange}
-                          placeholder="Select a customer"
-                          searchPlaceholder="Search customers..."
-                          emptyText="No customer found."
-                          disabled={customersLoading}
-                        />
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Customer</FormLabel>
+                        <FormControl>
+                          <Combobox
+                            options={customers?.map(c => ({ value: c.id, label: c.fullName })) || []}
+                            value={field.value}
+                            onChange={field.onChange}
+                            placeholder="Select a customer"
+                            searchPlaceholder="Search customers..."
+                            emptyText="No customer found."
+                            disabled={customersLoading}
+                            className="h-10 w-full"
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -648,17 +770,20 @@ export default function AddPaymentPage() {
                     control={form.control}
                     name="projectId"
                     render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>Project</FormLabel>
-                        <Combobox
-                          options={projectsForCustomer.map(p => ({ value: p.id, label: p.projectName }))}
-                          value={field.value}
-                          onChange={field.onChange}
-                          placeholder="Select a project"
-                          searchPlaceholder="Search projects..."
-                          emptyText="No projects for this customer."
-                          disabled={!customerId || projectsForCustomer.length === 0}
-                        />
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Project</FormLabel>
+                        <FormControl>
+                          <Combobox
+                            options={projectsForCustomer.map(p => ({ value: p.id, label: p.projectName }))}
+                            value={field.value}
+                            onChange={field.onChange}
+                            placeholder="Select a project"
+                            searchPlaceholder="Search projects..."
+                            emptyText="No projects for this customer."
+                            disabled={!customerId || projectsForCustomer.length === 0}
+                            className="h-10 w-full"
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -667,27 +792,89 @@ export default function AddPaymentPage() {
                     control={form.control}
                     name="flatId"
                     render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>Flat</FormLabel>
-                        <Combobox
-                          options={flatsForProject.map(f => ({ value: f.id, label: f.flatNumber }))}
-                          value={field.value}
-                          onChange={field.onChange}
-                          placeholder="Select a flat"
-                          searchPlaceholder="Search flats..."
-                          emptyText="No flats found."
-                          disabled={!projectId || flatsForProject.length === 0}
-                        />
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Flat</FormLabel>
+                        <FormControl>
+                          <Combobox
+                            options={flatsForProject.map(f => ({ value: f.id, label: f.flatNumber }))}
+                            value={field.value}
+                            onChange={field.onChange}
+                            placeholder="Select a flat"
+                            searchPlaceholder="Search flats..."
+                            emptyText="No flats found."
+                            disabled={!projectId || flatsForProject.length === 0}
+                            className="h-10 w-full"
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 </div>
+
+                {customerFinancials && (
+                  <div className="rounded-xl border bg-muted/40 backdrop-blur-sm p-4 space-y-3 animate-in fade-in-50 duration-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant={customerFinancials.isFlatSpecific ? "default" : "secondary"}>
+                          {customerFinancials.isFlatSpecific ? "Flat Breakdown" : "Overall Customer Financials"}
+                        </Badge>
+                        {customerFinancials.isFlatSpecific && customerFinancials.flatNumber && (
+                          <span className="text-xs text-muted-foreground font-medium">
+                            Flat: {customerFinancials.flatNumber} {customerFinancials.projectName ? `• ${customerFinancials.projectName}` : ''}
+                          </span>
+                        )}
+                      </div>
+                      {isCalculatingFinancials && (
+                        <span className="flex items-center gap-1.5 text-xs text-primary font-medium">
+                          <Loader2 className="h-3 w-3 animate-spin" /> Updating...
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="rounded-lg bg-background/80 border p-3">
+                        <p className="text-xs text-muted-foreground font-medium">
+                          {customerFinancials.isFlatSpecific ? "Flat Total Price" : "Total Agreed Value"}
+                        </p>
+                        <p className="text-xl font-bold tracking-tight text-foreground mt-0.5">
+                          {formatCurrency(customerFinancials.totalPrice)}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-background/80 border p-3">
+                        <p className="text-xs text-muted-foreground font-medium">Total Paid</p>
+                        <p className="text-xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          {formatCurrency(customerFinancials.totalPaid)}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-background/80 border p-3 flex items-center justify-between">
+                        <div>
+                          <p className="text-xs text-muted-foreground font-medium">Current Due</p>
+                          <p className="text-xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-0.5">
+                            {formatCurrency(customerFinancials.totalDue)}
+                          </p>
+                        </div>
+                        {customerFinancials.totalDue > 0 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs font-semibold border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                            onClick={() => {
+                              form.setValue('amount', customerFinancials.totalDue);
+                            }}
+                          >
+                            Pay Due
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <Separator />
 
-                <div className="grid md:grid-cols-2 gap-8">
+                <div className="grid md:grid-cols-2 gap-8 items-start">
                   <div className="space-y-4">
                     <h3 className="text-lg font-medium text-primary">Purpose of Payment</h3>
                     <FormField
@@ -730,10 +917,10 @@ export default function AddPaymentPage() {
                               control={form.control}
                               name="otherPurpose"
                               render={({ field }) => (
-                                  <FormItem>
-                                      <FormLabel>Please Specify</FormLabel>
+                                  <FormItem className="flex flex-col justify-start space-y-2">
+                                      <FormLabel className="h-5 flex items-center">Please Specify</FormLabel>
                                       <FormControl>
-                                          <Input placeholder="e.g., Parking Fee" {...field} />
+                                          <Input placeholder="e.g., Parking Fee" className="h-10" {...field} />
                                       </FormControl>
                                       <FormMessage />
                                   </FormItem>
@@ -747,10 +934,10 @@ export default function AddPaymentPage() {
                       control={form.control}
                       name="amount"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Amount ({currencySymbol})</FormLabel>
+                        <FormItem className="flex flex-col justify-start space-y-2">
+                          <FormLabel className="h-5 flex items-center">Amount ({currencySymbol})</FormLabel>
                           <FormControl>
-                            <Input type="number" placeholder="50000" {...field} />
+                            <Input type="number" placeholder="50000" className="h-10" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -760,14 +947,14 @@ export default function AddPaymentPage() {
                       control={form.control}
                       name="paymentMethod"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Payment Method</FormLabel>
+                        <FormItem className="flex flex-col justify-start space-y-2">
+                          <FormLabel className="h-5 flex items-center">Payment Method</FormLabel>
                           <Select
                             onValueChange={field.onChange}
                             defaultValue={field.value}
                           >
                             <FormControl>
-                              <SelectTrigger>
+                              <SelectTrigger className="h-10">
                                 <SelectValue placeholder="Select a payment method" />
                               </SelectTrigger>
                             </FormControl>
@@ -790,15 +977,15 @@ export default function AddPaymentPage() {
 
               <div className="space-y-4">
                 <h3 className="text-lg font-medium text-primary">Additional Info</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                   <FormField
                     control={form.control}
                     name="date"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Payment Date</FormLabel>
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Payment Date</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} />
+                          <Input type="date" className="h-10" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -808,11 +995,12 @@ export default function AddPaymentPage() {
                     control={form.control}
                     name="reference"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Reference</FormLabel>
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Reference</FormLabel>
                         <FormControl>
                           <Input
                             placeholder="Optional (e.g., Cheque No.)"
+                            className="h-10"
                             {...field}
                           />
                         </FormControl>
@@ -853,12 +1041,12 @@ export default function AddPaymentPage() {
                         <Input 
                             type="search" 
                             placeholder="Search payments..."
-                            className="pl-8 sm:w-full lg:w-[300px]"
+                            className="pl-8 sm:w-full lg:w-[300px] h-10"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
-                    <Button variant="outline" onClick={handleExport} className="w-full sm:w-auto">
+                    <Button variant="outline" onClick={handleExport} className="w-full sm:w-auto h-10">
                         <Download className="mr-2 h-4 w-4" />
                         Export
                     </Button>
