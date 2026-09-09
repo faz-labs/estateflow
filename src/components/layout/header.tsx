@@ -45,6 +45,9 @@ export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleLogout = async () => {
+    if (typeof document !== 'undefined') {
+      document.cookie = 'auth_session=; path=/; max-age=0; SameSite=Lax';
+    }
     await signOut(auth);
     router.push('/login');
   };

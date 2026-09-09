@@ -1,12 +1,12 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { ForceChangePasswordModal } from '@/components/auth/force-change-password-modal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, Clock, ShieldAlert, LogOut, Loader2 } from 'lucide-react';
-import { useAuth } from '@/firebase';
+import { useAuth, useUser } from '@/firebase';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 
@@ -22,20 +22,44 @@ export function TenantGuard({ children }: { children: ReactNode }) {
     isLoading,
   } = useUserProfile();
 
+  const { user, isUserLoading } = useUser();
   const auth = useAuth();
   const router = useRouter();
 
+  // Redirect to login immediately if user is not authenticated
+  useEffect(() => {
+    if (!isUserLoading && !user) {
+      router.replace('/login');
+    }
+  }, [user, isUserLoading, router]);
+
   const handleLogout = async () => {
+    if (typeof document !== 'undefined') {
+      document.cookie = 'auth_session=; path=/; max-age=0; SameSite=Lax';
+    }
     await signOut(auth);
     router.push('/login');
   };
 
-  if (isLoading) {
+  // 1. Initial Authentication & Profile Loading State
+  if (isUserLoading || isLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-xs text-muted-foreground">Verifying workspace permissions...</p>
+          <p className="text-xs text-muted-foreground">Verifying authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Unauthenticated state: NEVER render children or access-denied UI, keep redirecting
+  if (!user) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-xs text-muted-foreground">Redirecting to login...</p>
         </div>
       </div>
     );

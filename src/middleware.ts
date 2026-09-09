@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 /**
- * Next.js Middleware to handle subdomain and host-based routing:
- * - admin-estateflow.remotizedit.online & admin.localhost -> Admin Console (/dashboard/tenants)
- * - /admin path alias -> /dashboard/tenants
- * - estateflow.remotizedit.online & localhost:9002 -> Main App
+ * Next.js Middleware to handle authentication redirects and host-based routing:
+ * - Unauthenticated visitors to /dashboard, /tenants, /user, /admin, /project are immediately redirected to /login
+ * - Path aliases: /tenants & /admin -> /dashboard/tenants, /user & /users -> /dashboard/settings
+ * - Subdomain routing: admin-estateflow.* / admin.localhost -> Admin Console
  */
 export function middleware(request: NextRequest) {
   const host = request.headers.get('host') || '';
@@ -27,14 +27,38 @@ export function middleware(request: NextRequest) {
     host.startsWith('admin-localhost') ||
     host.startsWith('admin.localhost');
 
-  // Convenience direct path alias
-  if (pathname === '/admin') {
+  const hasAuthSession = request.cookies.has('auth_session');
+
+  // Convenience direct path aliases
+  if (pathname === '/admin' || pathname === '/tenants') {
+    if (!hasAuthSession) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
     return NextResponse.redirect(new URL('/dashboard/tenants', request.url));
   }
 
+  if (pathname === '/user' || pathname === '/users') {
+    if (!hasAuthSession) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+    return NextResponse.redirect(new URL('/dashboard/settings', request.url));
+  }
+
+  // Protected application routes
+  const isProtectedRoute =
+    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/project');
+
+  if (isProtectedRoute && !hasAuthSession) {
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+
   if (isAdminSubdomain) {
-    // On the admin subdomain, landing on root directs straight to the Super Admin console
+    // On the admin subdomain, landing on root directs straight to Super Admin or login
     if (pathname === '/') {
+      if (!hasAuthSession) {
+        return NextResponse.redirect(new URL('/login', request.url));
+      }
       return NextResponse.redirect(new URL('/dashboard/tenants', request.url));
     }
     return NextResponse.next();

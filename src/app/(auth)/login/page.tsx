@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Card,
@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/icons';
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, useFirestore, setDocumentNonBlocking } from '@/firebase';
+import { useAuth, useFirestore, useUser, setDocumentNonBlocking } from '@/firebase';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import {
@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/dialog';
 import { Loader2, Mail, Lock, LogIn } from 'lucide-react';
 import type { Tenant, TenantInvite, User as UserProfile } from '@/lib/types';
-import { SUPER_ADMIN_EMAILS } from '@/hooks/use-user-profile';
+import { SUPER_ADMIN_EMAILS, useUserProfile } from '@/hooks/use-user-profile';
 import { ForceChangePasswordModal } from '@/components/auth/force-change-password-modal';
 
 export default function LoginPage() {
@@ -48,6 +48,23 @@ export default function LoginPage() {
   const firestore = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
+  const { user, isUserLoading } = useUser();
+  const { isSuperAdmin, isLoading: isProfileLoading } = useUserProfile();
+
+  // If already authenticated, redirect straight to their workspace
+  useEffect(() => {
+    if (isUserLoading || isProfileLoading) return;
+    if (user) {
+      if (typeof document !== 'undefined') {
+        document.cookie = 'auth_session=true; path=/; max-age=2592000; SameSite=Lax';
+      }
+      if (isSuperAdmin) {
+        router.replace('/dashboard/tenants');
+      } else {
+        router.replace('/dashboard');
+      }
+    }
+  }, [user, isUserLoading, isSuperAdmin, isProfileLoading, router]);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,6 +102,9 @@ export default function LoginPage() {
         toast({
           title: 'Login Success',
         });
+        if (typeof document !== 'undefined') {
+          document.cookie = 'auth_session=true; path=/; max-age=2592000; SameSite=Lax';
+        }
         setIsRedirecting(true);
         window.location.assign('/dashboard/tenants');
         return;
@@ -152,6 +172,9 @@ export default function LoginPage() {
       toast({
         title: 'Login Success',
       });
+      if (typeof document !== 'undefined') {
+        document.cookie = 'auth_session=true; path=/; max-age=2592000; SameSite=Lax';
+      }
       setIsRedirecting(true);
       window.location.assign('/dashboard');
       return;

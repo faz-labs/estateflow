@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useFirestore, useUser } from '@/firebase';
 import {
   collection,
@@ -87,10 +88,21 @@ export interface UserProvisionRequest {
 }
 
 export default function SuperAdminTenantsPage() {
+  const router = useRouter();
   const { isSuperAdmin, isLoading: isProfileLoading } = useUserProfile();
   const firestore = useFirestore();
   const { user } = useUser();
   const { toast } = useToast();
+
+  // Instantly redirect if not logged in or not super admin
+  useEffect(() => {
+    if (isProfileLoading) return;
+    if (!user) {
+      router.replace('/login');
+    } else if (!isSuperAdmin) {
+      router.replace('/dashboard');
+    }
+  }, [user, isProfileLoading, isSuperAdmin, router]);
 
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -615,19 +627,9 @@ export default function SuperAdminTenantsPage() {
 
   if (!isSuperAdmin) {
     return (
-      <div className="max-w-md mx-auto mt-20 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-center space-y-4 shadow-lg">
-        <div className="h-12 w-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-700 dark:text-slate-300">
-          <ShieldAlert className="h-6 w-6" />
-        </div>
-        <div className="space-y-1">
-          <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">Page Restricted</h2>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            You do not have permission to view this administrative resource. If you believe this is an error, please contact your organization administrator.
-          </p>
-        </div>
-        <Button variant="default" size="sm" onClick={() => window.location.assign('/dashboard')} className="mt-2">
-          Return to Dashboard
-        </Button>
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <p className="text-xs">Redirecting to workspace dashboard...</p>
       </div>
     );
   }

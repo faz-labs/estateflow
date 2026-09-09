@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { useToast } from '@/hooks/use-toast';
+import { useUser } from '@/firebase';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,10 +22,14 @@ import { ShieldAlert } from 'lucide-react';
  */
 export function FirebaseErrorListener() {
   const { toast } = useToast();
+  const { user } = useUser();
   const [deniedError, setDeniedError] = useState<FirestorePermissionError | null>(null);
 
   useEffect(() => {
     const handleError = (error: FirestorePermissionError) => {
+      // If user is not logged in, suppress alerts as redirection to /login is taking place
+      if (!user) return;
+
       console.warn('Firestore Permission Violation caught gracefully:', error);
 
       // 1. Fire a toast notification immediately

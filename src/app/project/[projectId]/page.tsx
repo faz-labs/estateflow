@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
-import { useFirestore } from '@/firebase';
+import { useFirestore, useUser } from '@/firebase';
 import {
   doc,
   collection,
@@ -27,7 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Building, Phone, User as UserIcon, ArrowLeft } from 'lucide-react';
+import { Building, Phone, User as UserIcon, ArrowLeft, Loader2 } from 'lucide-react';
 import { formatDateForDisplay } from '@/lib/date-utils';
 import { notFound, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -58,6 +58,7 @@ export default function ProjectDetailPage({
 }: {
   params: Promise<{ projectId: string }>;
 }) {
+  const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
   const router = useRouter();
   const { projectId } = use(params);
@@ -68,8 +69,15 @@ export default function ProjectDetailPage({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Instantly redirect to login if not logged in
   useEffect(() => {
-    if (!projectId || !firestore) return;
+    if (!isUserLoading && !user) {
+      router.replace('/login');
+    }
+  }, [user, isUserLoading, router]);
+
+  useEffect(() => {
+    if (!projectId || !firestore || !user) return;
 
     const fetchData = async () => {
       setIsLoading(true);
@@ -150,10 +158,10 @@ export default function ProjectDetailPage({
     fetchData();
   }, [projectId, firestore]);
 
-  if (isLoading) {
+  if (isUserLoading || !user || isLoading) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <p>Loading project details...</p>
+      <div className="flex justify-center items-center h-screen bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }

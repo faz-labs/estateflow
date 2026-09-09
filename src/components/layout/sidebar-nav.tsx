@@ -60,6 +60,9 @@ export function SidebarNav({ isMobile = false, onNavigate, className }: SidebarN
   }, [pathname]);
 
   const handleLogout = async () => {
+    if (typeof document !== 'undefined') {
+      document.cookie = 'auth_session=; path=/; max-age=0; SameSite=Lax';
+    }
     await signOut(auth);
     router.push('/login');
   };
