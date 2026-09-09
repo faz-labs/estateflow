@@ -83,7 +83,7 @@ const ITEMS_PER_PAGE = 10;
 export default function OperatingCostPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId, currencySymbol, formatCurrency } = useUserProfile();
+  const { tenantId, currencySymbol, formatCurrency, isViewer } = useUserProfile();
   const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false);
   
   // Data for forms and list
@@ -113,6 +113,15 @@ export default function OperatingCostPage() {
   });
 
   async function onSubmit(data: AddCostFormValues) {
+    if (isViewer) {
+      toast({
+        variant: 'destructive',
+        title: 'Permission Denied',
+        description: 'Your account has read-only access (Viewer role). You cannot record operating costs.',
+      });
+      return;
+    }
+
     try {
       const costsCollection = collection(firestore, 'operatingCosts');
       const newCostRef = doc(costsCollection);
@@ -246,8 +255,8 @@ export default function OperatingCostPage() {
                             )}/>
                         </div>
                         <div className="flex justify-end pt-2">
-                            <Button type="submit" disabled={form.formState.isSubmitting}>
-                                {form.formState.isSubmitting ? 'Recording...' : 'Record Cost'}
+                            <Button type="submit" disabled={isViewer || form.formState.isSubmitting}>
+                                {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Recording...' : 'Record Cost'}
                             </Button>
                         </div>
                     </form>

@@ -3,37 +3,76 @@
 import { useState, useEffect } from 'react';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { ShieldAlert } from 'lucide-react';
 
 /**
- * An invisible component that listens for globally emitted 'permission-error' events.
- * It throws any received error to be caught by Next.js's global-error.tsx.
+ * Listens for globally emitted 'permission-error' events and gracefully displays
+ * a user-friendly modal and notification toast instead of crashing the React application.
  */
 export function FirebaseErrorListener() {
-  // Use the specific error type for the state for type safety.
-  const [error, setError] = useState<FirestorePermissionError | null>(null);
+  const { toast } = useToast();
+  const [deniedError, setDeniedError] = useState<FirestorePermissionError | null>(null);
 
   useEffect(() => {
-    // The callback now expects a strongly-typed error, matching the event payload.
     const handleError = (error: FirestorePermissionError) => {
-      // Set error in state to trigger a re-render.
-      setError(error);
+      console.warn('Firestore Permission Violation caught gracefully:', error);
+
+      // 1. Fire a toast notification immediately
+      toast({
+        variant: 'destructive',
+        title: 'Permission Denied',
+        description: 'Your account has read-only access (Viewer role). Changes cannot be saved.',
+      });
+
+      // 2. Open the user-friendly permission dialog
+      setDeniedError(error);
     };
 
-    // The typed emitter will enforce that the callback for 'permission-error'
-    // matches the expected payload type (FirestorePermissionError).
     errorEmitter.on('permission-error', handleError);
 
-    // Unsubscribe on unmount to prevent memory leaks.
     return () => {
       errorEmitter.off('permission-error', handleError);
     };
-  }, []);
+  }, [toast]);
 
-  // On re-render, if an error exists in state, throw it.
-  if (error) {
-    throw error;
-  }
+  if (!deniedError) return null;
 
-  // This component renders nothing.
-  return null;
+  return (
+    <AlertDialog open={!!deniedError} onOpenChange={(open) => { if (!open) setDeniedError(null); }}>
+      <AlertDialogContent className="sm:max-w-md">
+        <AlertDialogHeader>
+          <div className="h-12 w-12 rounded-full bg-red-100 dark:bg-red-950/50 text-red-600 dark:text-red-400 flex items-center justify-center mb-1">
+            <ShieldAlert className="h-6 w-6" />
+          </div>
+          <AlertDialogTitle className="text-base font-bold text-slate-900 dark:text-white">
+            Permission Denied: Read-Only Account
+          </AlertDialogTitle>
+          <AlertDialogDescription className="text-xs text-muted-foreground leading-relaxed">
+            Your user account is assigned to the <strong>Viewer (Read-Only)</strong> role. 
+            Viewers have permission to explore projects, customers, receipts, and performance summaries, but cannot create, modify, or delete records.
+            <br /><br />
+            If you need to make changes, please contact your organization administrator to request an <strong>Accountant</strong> or <strong>Admin</strong> role.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="pt-2">
+          <AlertDialogAction 
+            onClick={() => setDeniedError(null)} 
+            className="w-full sm:w-auto text-xs bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-900"
+          >
+            Understood
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 }

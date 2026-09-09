@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
+import { adminAuth } from '@/lib/firebase-admin';
 
 /**
- * Confirms custom password reset token generated via Mailcow email dispatch.
+ * Confirms custom password reset token generated via Mailcow email dispatch
+ * and actually updates the user's password in Firebase Authentication.
  */
 export async function POST(request: Request) {
   try {
@@ -56,7 +58,30 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Mark token as used immediately
+    // 2. Actually update user password in Firebase Authentication!
+    if (adminAuth) {
+      try {
+        const userRecord = await adminAuth.getUserByEmail(email);
+        await adminAuth.updateUser(userRecord.uid, {
+          password: newPassword,
+        });
+      } catch (authErr: any) {
+        console.error('Failed to update password via Firebase Admin:', authErr);
+        return NextResponse.json(
+          { error: `Could not update password in Firebase Auth: ${authErr.message}` },
+          { status: 500 }
+        );
+      }
+    } else {
+      return NextResponse.json(
+        { 
+          error: 'Firebase Admin credentials (FIREBASE_SERVICE_ACCOUNT_KEY) are missing on the server. Please add your Firebase service account key in .env.local / Vercel to update passwords.',
+        },
+        { status: 500 }
+      );
+    }
+
+    // 3. Mark token as used
     await fetch(`${tokenDocUrl}?updateMask.fieldPaths=used`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -69,7 +94,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Password has been successfully updated.',
+      message: 'Password has been successfully updated in Firebase Authentication.',
     });
 
   } catch (error: any) {

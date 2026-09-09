@@ -71,7 +71,7 @@ interface AddProjectFormProps {
 export function AddProjectForm({ setDialogOpen }: AddProjectFormProps) {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId, currencySymbol } = useUserProfile();
+  const { tenantId, currencySymbol, isViewer } = useUserProfile();
   const form = useForm<ProjectFormValues>({
     resolver: zodResolver(projectFormSchema),
     defaultValues: {
@@ -90,6 +90,15 @@ export function AddProjectForm({ setDialogOpen }: AddProjectFormProps) {
   });
 
   async function onSubmit(data: ProjectFormValues) {
+    if (isViewer) {
+      toast({
+        variant: 'destructive',
+        title: 'Permission Denied',
+        description: 'Your account has read-only access (Viewer role). You cannot add projects.',
+      });
+      return;
+    }
+
     try {
       const projectsCollection = collection(firestore, 'projects');
       const newProjectRef = doc(projectsCollection);
@@ -358,8 +367,8 @@ export function AddProjectForm({ setDialogOpen }: AddProjectFormProps) {
         </div>
         </ScrollArea>
         <div className="flex justify-end pt-4">
-          <Button type="submit" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? 'Adding...' : 'Add Project'}
+          <Button type="submit" disabled={isViewer || form.formState.isSubmitting}>
+            {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Adding...' : 'Add Project'}
           </Button>
         </div>
       </form>

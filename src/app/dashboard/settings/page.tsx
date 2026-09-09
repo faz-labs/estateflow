@@ -68,11 +68,13 @@ export default function SettingsPage() {
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
-  // Invite member state
-  const [isInviteOpen, setIsInviteOpen] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<'Admin' | 'Accountant' | 'Viewer'>('Viewer');
-  const [isSendingInvite, setIsSendingInvite] = useState(false);
+  // Request new user state (provisioned via platform admin)
+  const [isRequestOpen, setIsRequestOpen] = useState(false);
+  const [requestEmail, setRequestEmail] = useState('');
+  const [requestName, setRequestName] = useState('');
+  const [requestRole, setRequestRole] = useState<'Admin' | 'Accountant' | 'Viewer'>('Viewer');
+  const [requestNotes, setRequestNotes] = useState('');
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
 
   const userDocRef = useMemoFirebase(() => user ? doc(firestore, 'users', user.uid) : null, [firestore, user]);
 
@@ -244,65 +246,51 @@ export default function SettingsPage() {
     }
   }, [isAdmin, tenantId, firestore]);
 
-  const handleSendInvite = async (e: React.FormEvent) => {
+  const handleSendUserRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteEmail) {
+    if (!requestEmail) {
       toast({ variant: 'destructive', title: 'Error', description: 'Please provide an email address.' });
       return;
     }
 
-    setIsSendingInvite(true);
+    setIsSubmittingRequest(true);
     try {
-      const normalizedInviteEmail = inviteEmail.trim().toLowerCase();
+      const normalizedReqEmail = requestEmail.trim().toLowerCase();
 
-      // 1. Create the pending invite in Firestore
-      const inviteRef = collection(firestore, 'tenant_invites');
-      const inviteDocData: Omit<TenantInvite, 'id'> = {
-        email: normalizedInviteEmail,
+      // Submit user access request to Firestore for platform admin review & provisioning
+      const reqRef = collection(firestore, 'user_requests');
+      await addDoc(reqRef, {
         tenantId,
         companyName,
-        role: inviteRole,
-        invitedBy: user?.email || 'Admin',
-        createdAt: new Date().toISOString(),
+        requestedByEmail: user?.email || '',
+        requestedByName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : user?.displayName || 'User',
+        targetEmail: normalizedReqEmail,
+        targetName: requestName.trim(),
+        targetRole: requestRole,
+        notes: requestNotes.trim(),
         status: 'pending',
-      };
-      await addDoc(inviteRef, inviteDocData);
-
-      // 2. Dispatch the email via Mailcow SMTP API
-      const res = await fetch('/api/auth/invite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: normalizedInviteEmail,
-          role: inviteRole,
-          tenantId,
-          companyName,
-          invitedByName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : user?.email,
-        }),
+        createdAt: new Date().toISOString(),
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to dispatch email.');
-      }
 
       toast({
-        title: 'Invitation Sent!',
-        description: data.message || `An invitation has been dispatched to ${normalizedInviteEmail}.`,
+        title: 'Request Submitted!',
+        description: `Your request to add ${normalizedReqEmail} as ${requestRole} has been submitted to the platform administrator.`,
       });
 
-      setIsInviteOpen(false);
-      setInviteEmail('');
-      setInviteRole('Viewer');
+      setIsRequestOpen(false);
+      setRequestEmail('');
+      setRequestName('');
+      setRequestNotes('');
+      setRequestRole('Viewer');
     } catch (err: any) {
-      console.error('Error sending invite:', err);
+      console.error('Error submitting user request:', err);
       toast({
         variant: 'destructive',
-        title: 'Invitation Error',
-        description: err.message || 'Could not send invitation email.',
+        title: 'Request Failed',
+        description: err.message || 'Could not submit user request. Please try again.',
       });
     } finally {
-      setIsSendingInvite(false);
+      setIsSubmittingRequest(false);
     }
   };
 
@@ -658,7 +646,7 @@ export default function SettingsPage() {
                 className="bg-muted/50"
               />
               <p className="text-[11px] text-muted-foreground">
-                Email is tied to your login identity. To change it or reset passwords, use the Mailcow SMTP reset option.
+                Email is tied to your login identity. To change it or reset passwords, use the Forgot Password option on the sign-in screen.
               </p>
             </div>
             <Button type="submit" size="sm" disabled={isSaving}>
@@ -679,7 +667,7 @@ export default function SettingsPage() {
                 <CardTitle>Team & Role Management</CardTitle>
                 <CardDescription>
                   {isAdmin 
-                    ? `Manage member access and invite colleagues to ${companyName}.`
+                    ? `Manage member access or submit a request to platform administrator to provision new users for ${companyName}.`
                     : 'View tenant role access permissions.'}
                 </CardDescription>
               </div>
@@ -687,11 +675,11 @@ export default function SettingsPage() {
             {isAdmin && (
               <Button 
                 size="sm" 
-                onClick={() => setIsInviteOpen(true)}
-                className="flex items-center gap-1.5 self-start sm:self-auto"
+                onClick={() => setIsRequestOpen(true)}
+                className="flex items-center gap-1.5 self-start sm:self-auto text-xs"
               >
                 <UserPlus className="h-4 w-4" />
-                Invite Colleague
+                Request User Access
               </Button>
             )}
           </div>
@@ -815,53 +803,141 @@ export default function SettingsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Invite Colleague Dialog (Mailcow SMTP Integrated) */}
-      <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
-        <DialogContent className="sm:max-w-md">
+      {/* Request User Access Dialog */}
+      <Dialog open={isRequestOpen} onOpenChange={setIsRequestOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-2">
               <UserPlus className="h-5 w-5" />
             </div>
-            <DialogTitle>Invite Colleague to {companyName}</DialogTitle>
+            <DialogTitle>Request User Access for {companyName}</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Send an email invitation. The recipient will be automatically attached to your company workspace upon signup.
+              User accounts are provisioned centrally by the platform administrator. Please provide the colleague's email address and choose the designated role below.
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSendInvite} className="space-y-4 py-2">
+          <form onSubmit={handleSendUserRequest} className="space-y-4 py-1">
             <div className="space-y-1.5">
-              <Label htmlFor="invite-email" className="text-xs font-medium">Colleague's Email Address</Label>
+              <Label htmlFor="req-email" className="text-xs font-medium">
+                Colleague's Work Email <span className="text-destructive">*</span>
+              </Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  id="invite-email"
+                  id="req-email"
                   type="email"
                   placeholder="colleague@company.com"
-                  className="pl-9"
+                  className="pl-9 text-xs"
                   required
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  disabled={isSendingInvite}
+                  value={requestEmail}
+                  onChange={(e) => setRequestEmail(e.target.value)}
+                  disabled={isSubmittingRequest}
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="invite-role" className="text-xs font-medium">Assigned Role</Label>
+              <Label htmlFor="req-name" className="text-xs font-medium">Colleague's Full Name</Label>
+              <Input
+                id="req-name"
+                placeholder="Jane Doe"
+                className="text-xs"
+                value={requestName}
+                onChange={(e) => setRequestName(e.target.value)}
+                disabled={isSubmittingRequest}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="req-role" className="text-xs font-medium">
+                Requested Workspace Role <span className="text-destructive">*</span>
+              </Label>
               <Select
-                value={inviteRole}
-                onValueChange={(val: 'Admin' | 'Accountant' | 'Viewer') => setInviteRole(val)}
-                disabled={isSendingInvite}
+                value={requestRole}
+                onValueChange={(val: 'Admin' | 'Accountant' | 'Viewer') => setRequestRole(val)}
+                disabled={isSubmittingRequest}
               >
-                <SelectTrigger id="invite-role" className="w-full text-xs">
+                <SelectTrigger id="req-role" className="w-full text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Admin">Admin (Full administrative & billing control)</SelectItem>
-                  <SelectItem value="Accountant">Accountant (Inflows, expenses & receipts)</SelectItem>
-                  <SelectItem value="Viewer">Viewer (Read-only project and sales access)</SelectItem>
+                  <SelectItem value="Admin">Admin (Full Administrative & Management Control)</SelectItem>
+                  <SelectItem value="Accountant">Accountant (Financial Inflows, Expenses & Receipts)</SelectItem>
+                  <SelectItem value="Viewer">Viewer (Read-Only Performance & Project Access)</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* Visual Breakdown of the 3 Roles */}
+              <div className="grid grid-cols-1 gap-2 pt-1">
+                <div 
+                  onClick={() => setRequestRole('Admin')}
+                  className={`p-2.5 rounded-lg border text-xs cursor-pointer transition-all ${
+                    requestRole === 'Admin' 
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary/30' 
+                      : 'border-slate-200 dark:border-slate-800 bg-muted/20 hover:bg-muted/40'
+                  }`}
+                >
+                  <p className="font-semibold text-slate-900 dark:text-white flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-amber-500" /> 1. Admin Role
+                    </span>
+                    {requestRole === 'Admin' && <span className="text-[10px] text-primary font-medium">Selected</span>}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+                    Complete administrative control: update company branding, edit invoice details, oversee team members, and manage all projects and sales.
+                  </p>
+                </div>
+
+                <div 
+                  onClick={() => setRequestRole('Accountant')}
+                  className={`p-2.5 rounded-lg border text-xs cursor-pointer transition-all ${
+                    requestRole === 'Accountant' 
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary/30' 
+                      : 'border-slate-200 dark:border-slate-800 bg-muted/20 hover:bg-muted/40'
+                  }`}
+                >
+                  <p className="font-semibold text-slate-900 dark:text-white flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-blue-500" /> 2. Accountant Role
+                    </span>
+                    {requestRole === 'Accountant' && <span className="text-[10px] text-primary font-medium">Selected</span>}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+                    Financial operations: record payments, log vendor expenses, track operating costs, print official A4 receipts, and review cash flows.
+                  </p>
+                </div>
+
+                <div 
+                  onClick={() => setRequestRole('Viewer')}
+                  className={`p-2.5 rounded-lg border text-xs cursor-pointer transition-all ${
+                    requestRole === 'Viewer' 
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary/30' 
+                      : 'border-slate-200 dark:border-slate-800 bg-muted/20 hover:bg-muted/40'
+                  }`}
+                >
+                  <p className="font-semibold text-slate-900 dark:text-white flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-slate-400" /> 3. Viewer Role (Read-Only)
+                    </span>
+                    {requestRole === 'Viewer' && <span className="text-[10px] text-primary font-medium">Selected</span>}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+                    Strictly read-only: review project availability, view customer information, and inspect analytical reports. Cannot add, edit, or delete records.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="req-notes" className="text-xs font-medium">Notes / Justification for Administrator</Label>
+              <Input
+                id="req-notes"
+                placeholder="e.g. Senior property manager joining our Uttara site branch"
+                className="text-xs"
+                value={requestNotes}
+                onChange={(e) => setRequestNotes(e.target.value)}
+                disabled={isSubmittingRequest}
+              />
             </div>
 
             <DialogFooter className="gap-2 sm:gap-0 pt-2">
@@ -869,18 +945,18 @@ export default function SettingsPage() {
                 type="button" 
                 variant="outline" 
                 size="sm" 
-                onClick={() => setIsInviteOpen(false)}
-                disabled={isSendingInvite}
+                onClick={() => setIsRequestOpen(false)}
+                disabled={isSubmittingRequest}
               >
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={isSendingInvite}>
-                {isSendingInvite ? (
+              <Button type="submit" size="sm" disabled={isSubmittingRequest}>
+                {isSubmittingRequest ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Dispatching via Mailcow...
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting Request...
                   </>
                 ) : (
-                  'Send Invitation'
+                  'Send Request to Admin'
                 )}
               </Button>
             </DialogFooter>

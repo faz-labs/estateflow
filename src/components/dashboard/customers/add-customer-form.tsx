@@ -43,7 +43,7 @@ interface AddCustomerFormProps {
 export function AddCustomerForm({ setDialogOpen }: AddCustomerFormProps) {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId } = useUserProfile();
+  const { tenantId, isViewer } = useUserProfile();
   const form = useForm<CustomerFormValues>({
     resolver: zodResolver(customerFormSchema),
     defaultValues: {
@@ -55,6 +55,15 @@ export function AddCustomerForm({ setDialogOpen }: AddCustomerFormProps) {
   });
 
   async function onSubmit(data: CustomerFormValues) {
+    if (isViewer) {
+      toast({
+        variant: 'destructive',
+        title: 'Permission Denied',
+        description: 'Your account has read-only access (Viewer role). You cannot add customers.',
+      });
+      return;
+    }
+
     try {
       const customersCollection = collection(firestore, 'customers');
       const newCustomerRef = doc(customersCollection);
@@ -139,8 +148,8 @@ export function AddCustomerForm({ setDialogOpen }: AddCustomerFormProps) {
             )}
           />
         <div className="flex justify-end pt-4">
-          <Button type="submit" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? 'Adding...' : 'Add Customer'}
+          <Button type="submit" disabled={isViewer || form.formState.isSubmitting}>
+            {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Adding...' : 'Add Customer'}
           </Button>
         </div>
       </form>

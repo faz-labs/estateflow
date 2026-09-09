@@ -88,6 +88,11 @@ function ResetPasswordContent() {
           body: JSON.stringify({ token, newPassword }),
         });
 
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error(`Server returned an unexpected response (${res.status}).`);
+        }
+
         const data = await res.json();
         if (!res.ok) {
           throw new Error(data.error || 'Failed to reset password.');

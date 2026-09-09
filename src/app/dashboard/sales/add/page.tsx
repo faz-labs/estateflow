@@ -58,7 +58,7 @@ type AddSaleFormValues = z.infer<typeof addSaleFormSchema>;
 export default function AddSalePage() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId, currencySymbol, formatCurrency } = useUserProfile();
+  const { tenantId, currencySymbol, formatCurrency, isViewer } = useUserProfile();
   const router = useRouter();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -114,6 +114,15 @@ export default function AddSalePage() {
   const dueAmount = calculatedTotalPrice;
 
   async function onSubmit(data: AddSaleFormValues) {
+    if (isViewer) {
+      toast({
+        variant: 'destructive',
+        title: 'Permission Denied',
+        description: 'Your account has read-only access (Viewer role). You cannot record sales.',
+      });
+      return;
+    }
+
     try {
         const batch = writeBatch(firestore);
         
@@ -433,8 +442,8 @@ export default function AddSalePage() {
                 </div>
 
                 <div className="flex justify-end pt-4">
-                    <Button type="submit" disabled={form.formState.isSubmitting || projectsLoading || customersLoading || flatsLoading}>
-                        {form.formState.isSubmitting ? 'Recording Sale...' : 'Record Sale'}
+                    <Button type="submit" disabled={isViewer || form.formState.isSubmitting || projectsLoading || customersLoading || flatsLoading}>
+                        {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Recording Sale...' : 'Record Sale'}
                     </Button>
                 </div>
             </form>

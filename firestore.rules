@@ -199,6 +199,15 @@ service cloud.firestore {
     }
 
     // --------------------------------------------------------------------------
+    // User Provisioning Requests (/user_requests)
+    // --------------------------------------------------------------------------
+    match /user_requests/{requestId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSuperAdmin();
+    }
+
+    // --------------------------------------------------------------------------
     // Password Reset Tokens (/password_resets)
     // --------------------------------------------------------------------------
     match /password_resets/{tokenId} {

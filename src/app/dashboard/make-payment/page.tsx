@@ -77,7 +77,7 @@ export type EnrichedOutflow = OutflowTransaction & {
 const PAYMENTS_PER_PAGE = 10;
 
 export default function MakePaymentPage() {
-  const { formatCurrency, currencySymbol } = useUserProfile();
+  const { formatCurrency, currencySymbol, isViewer } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   
@@ -197,6 +197,15 @@ export default function MakePaymentPage() {
   }, [firestore, isDataDirty, toast]);
 
   async function onSubmit(data: MakePaymentFormValues) {
+    if (isViewer) {
+      toast({
+        variant: 'destructive',
+        title: 'Permission Denied',
+        description: 'Your account has read-only access (Viewer role). You cannot make payments.',
+      });
+      return;
+    }
+
     if (!selectedExpense) {
       toast({ variant: 'destructive', title: 'Error', description: 'No expense selected.' });
       return;
@@ -505,8 +514,8 @@ export default function MakePaymentPage() {
                 />
 
               <div className="flex justify-end pt-4">
-                <Button type="submit" disabled={form.formState.isSubmitting || !selectedExpense}>
-                  Record Payment
+                <Button type="submit" disabled={isViewer || form.formState.isSubmitting || !selectedExpense}>
+                  {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Recording...' : 'Record Payment'}
                 </Button>
               </div>
             </form>

@@ -42,7 +42,7 @@ interface AddVendorFormProps {
 export function AddVendorForm({ setDialogOpen }: AddVendorFormProps) {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId } = useUserProfile();
+  const { tenantId, isViewer } = useUserProfile();
   const form = useForm<VendorFormValues>({
     resolver: zodResolver(vendorFormSchema),
     defaultValues: {
@@ -54,6 +54,15 @@ export function AddVendorForm({ setDialogOpen }: AddVendorFormProps) {
   });
 
   async function onSubmit(data: VendorFormValues) {
+    if (isViewer) {
+      toast({
+        variant: 'destructive',
+        title: 'Permission Denied',
+        description: 'Your account has read-only access (Viewer role). You cannot add vendors.',
+      });
+      return;
+    }
+
     try {
       const vendorsCollection = collection(firestore, 'vendors');
       const newVendorRef = doc(vendorsCollection);
@@ -138,8 +147,8 @@ export function AddVendorForm({ setDialogOpen }: AddVendorFormProps) {
             )}
           />
         <div className="flex justify-end pt-4">
-          <Button type="submit" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? 'Adding...' : 'Add Vendor'}
+          <Button type="submit" disabled={isViewer || form.formState.isSubmitting}>
+            {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Adding...' : 'Add Vendor'}
           </Button>
         </div>
       </form>

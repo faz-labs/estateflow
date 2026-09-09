@@ -97,13 +97,22 @@ const ITEMS_PER_PAGE = 10;
 function AddItemForm({ setDialogOpen }: { setDialogOpen: (open: boolean) => void }) {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId } = useUserProfile();
+  const { tenantId, isViewer } = useUserProfile();
   const form = useForm<AddItemFormValues>({
     resolver: zodResolver(addItemFormSchema),
     defaultValues: { name: '' },
   });
 
   async function onSubmit(data: AddItemFormValues) {
+    if (isViewer) {
+      toast({
+        variant: 'destructive',
+        title: 'Permission Denied',
+        description: 'Your account has read-only access (Viewer role).',
+      });
+      return;
+    }
+
     try {
       const itemsCollection = collection(firestore, 'expenseItems');
       const newItemRef = doc(itemsCollection);
@@ -116,7 +125,11 @@ function AddItemForm({ setDialogOpen }: { setDialogOpen: (open: boolean) => void
       form.reset();
       setDialogOpen(false);
     } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Error', description: error.message });
+      toast({
+        variant: 'destructive',
+        title: 'Uh oh! Something went wrong.',
+        description: 'Could not add the item: ' + error.message,
+      });
     }
   }
 
@@ -137,8 +150,8 @@ function AddItemForm({ setDialogOpen }: { setDialogOpen: (open: boolean) => void
           )}
         />
         <div className="flex justify-end pt-4">
-          <Button type="submit" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? 'Adding...' : 'Add Item'}
+          <Button type="submit" disabled={isViewer || form.formState.isSubmitting}>
+            {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Adding...' : 'Add Item'}
           </Button>
         </div>
       </form>
@@ -150,7 +163,7 @@ function AddItemForm({ setDialogOpen }: { setDialogOpen: (open: boolean) => void
 export default function AddExpensePage() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId, currencySymbol, formatCurrency } = useUserProfile();
+  const { tenantId, currencySymbol, formatCurrency, isViewer } = useUserProfile();
   const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false);
   const [isDataDirty, setIsDataDirty] = useState(true);
   const [expenses, setExpenses] = useState<EnrichedExpense[]>([]);
@@ -254,6 +267,15 @@ export default function AddExpensePage() {
   };
 
   async function onSubmit(data: AddExpenseFormValues) {
+    if (isViewer) {
+      toast({
+        variant: 'destructive',
+        title: 'Permission Denied',
+        description: 'Your account has read-only access (Viewer role). You cannot record expenses.',
+      });
+      return;
+    }
+
     try {
       const expenseId = await getNextExpenseId();
       const expenseRef = doc(collection(firestore, 'expenses'));
@@ -529,8 +551,8 @@ export default function AddExpensePage() {
                 />
 
                 <div className="flex justify-end pt-4">
-                <Button type="submit" disabled={form.formState.isSubmitting}>
-                    {form.formState.isSubmitting ? 'Recording...' : 'Record Expense'}
+                <Button type="submit" disabled={isViewer || form.formState.isSubmitting}>
+                    {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Recording...' : 'Record Expense'}
                 </Button>
                 </div>
             </form>

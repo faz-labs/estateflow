@@ -142,7 +142,7 @@ export type EnrichedTransaction = InflowTransaction & {
 export default function AddPaymentPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId, currencySymbol, formatCurrency } = useUserProfile();
+  const { tenantId, currencySymbol, formatCurrency, isViewer } = useUserProfile();
   const router = useRouter();
 
   const [projectsForCustomer, setProjectsForCustomer] = useState<Project[]>([]);
@@ -340,6 +340,15 @@ export default function AddPaymentPage() {
 
 
   async function onSubmit(data: AddPaymentFormValues) {
+    if (isViewer) {
+      toast({
+        variant: 'destructive',
+        title: 'Permission Denied',
+        description: 'Your account has read-only access (Viewer role). You cannot record payments.',
+      });
+      return;
+    }
+
     try {
         const receiptId = await getNextReceiptId();
         
@@ -757,8 +766,10 @@ export default function AddPaymentPage() {
               </div>
 
               <div className="flex justify-end pt-4 gap-2">
-                <Button type="submit" disabled={form.formState.isSubmitting}>
-                  {form.formState.isSubmitting
+                <Button type="submit" disabled={isViewer || form.formState.isSubmitting}>
+                  {isViewer
+                    ? 'Read-Only (Viewer Access)'
+                    : form.formState.isSubmitting
                     ? 'Recording...'
                     : 'Record Payment'}
                 </Button>

@@ -22,7 +22,12 @@ export async function POST(request: Request) {
     const smtpSecure = process.env.SMTP_SECURE === 'true';
     const smtpFromName = process.env.SMTP_FROM_NAME || 'EstateFlow Support';
     const smtpFromEmail = process.env.SMTP_FROM_EMAIL || smtpUser || 'noreply@remotizedit.online';
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002';
+    
+    // Dynamically detect host or fallback to NEXT_PUBLIC_APP_URL
+    const requestHost = request.headers.get('x-forwarded-host') || request.headers.get('host');
+    const proto = request.headers.get('x-forwarded-proto') || 'https';
+    const dynamicOrigin = requestHost ? `${proto}://${requestHost}` : 'http://localhost:9002';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || dynamicOrigin;
     const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
 
     // Verify SMTP settings are configured
@@ -36,7 +41,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { 
           success: false,
-          warning: 'Mailcow SMTP is not configured in .env.local.',
+          warning: 'Mailcow SMTP is not configured. Please add SMTP_HOST, SMTP_USER, and SMTP_PASS to environment variables (e.g. on Vercel).',
           configured: false,
         },
         { status: 200 }

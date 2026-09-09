@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/icons';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, useFirestore, setDocumentNonBlocking } from '@/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import {
   Dialog,
@@ -186,28 +186,39 @@ export default function LoginPage() {
     setIsSendingReset(true);
 
     try {
-      // Call self-hosted Mailcow SMTP API endpoint
+      const normalizedEmail = forgotEmail.trim().toLowerCase();
+
+      // Dispatch via custom email server (Mailcow SMTP)
       const response = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: forgotEmail.trim() }),
+        body: JSON.stringify({ email: normalizedEmail }),
       });
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const errorText = await response.text();
+        console.error('Non-JSON server response:', errorText);
+        throw new Error(
+          `Server returned an unexpected response (${response.status}). Please ensure Mailcow SMTP environment variables (SMTP_HOST, SMTP_USER, SMTP_PASS) are added to Vercel.`
+        );
+      }
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to dispatch reset email.');
+        throw new Error(data.error || 'Failed to dispatch password reset email.');
       }
 
       if (data.warning) {
         toast({
-          title: 'SMTP Notice',
+          title: 'Configuration Notice',
           description: data.warning,
         });
       } else {
         toast({
-          title: 'Email Dispatched',
-          description: data.message || `Password reset link sent to ${forgotEmail} via Mailcow SMTP.`,
+          title: 'Reset Link Sent',
+          description: data.message || `A password reset link has been sent to ${normalizedEmail}. Please check your inbox.`,
         });
       }
 
@@ -215,10 +226,11 @@ export default function LoginPage() {
       setForgotEmail('');
 
     } catch (err: any) {
+      console.error('Password Reset Error:', err);
       toast({
         variant: 'destructive',
         title: 'Reset Request Failed',
-        description: err.message || 'Could not send reset email through SMTP.',
+        description: err.message || 'Could not send reset email. Please try again.',
       });
     } finally {
       setIsSendingReset(false);
@@ -309,7 +321,7 @@ export default function LoginPage() {
         </Card>
       </div>
 
-      {/* Forgot Password Dialog (Mailcow SMTP Integrated) */}
+      {/* Forgot Password Dialog (Firebase Authentication) */}
       <Dialog open={isForgotOpen} onOpenChange={setIsForgotOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -318,7 +330,7 @@ export default function LoginPage() {
             </div>
             <DialogTitle>Reset Password</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Enter your account email. We will send a secure password reset link via your self-hosted Mailcow SMTP server.
+              Enter your account email. We will send a secure password reset link to your email address.
             </DialogDescription>
           </DialogHeader>
 
@@ -353,7 +365,7 @@ export default function LoginPage() {
               <Button type="submit" size="sm" disabled={isSendingReset}>
                 {isSendingReset ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending via Mailcow...
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending link...
                   </>
                 ) : (
                   'Send Reset Link'

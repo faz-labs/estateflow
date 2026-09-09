@@ -23,11 +23,34 @@ try {
     const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'studio-907320032-3bcaf';
 
     if (serviceAccountJson) {
-      const parsed = JSON.parse(serviceAccountJson);
-      app = initializeApp({
-        credential: cert(parsed),
-        projectId: parsed.project_id || projectId,
-      });
+      try {
+        let trimmed = serviceAccountJson.trim();
+        // Unwrap enclosing quotes if pasted with surrounding quotes in Vercel or .env
+        if ((trimmed.startsWith("'") && trimmed.endsWith("'")) || (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
+          trimmed = trimmed.slice(1, -1).trim();
+        }
+
+        if (trimmed.startsWith('{')) {
+          const parsed = JSON.parse(trimmed);
+          app = initializeApp({
+            credential: cert(parsed),
+            projectId: parsed.project_id || projectId,
+          });
+        } else if (trimmed.includes('BEGIN PRIVATE KEY') && clientEmail) {
+          app = initializeApp({
+            credential: cert({
+              projectId,
+              clientEmail,
+              privateKey: trimmed.replace(/\\n/g, '\n'),
+            }),
+            projectId,
+          });
+        } else {
+          console.warn('FIREBASE_SERVICE_ACCOUNT_KEY does not appear to be a valid JSON object. It should contain the entire downloaded JSON key file starting with "{" and ending with "}".');
+        }
+      } catch (parseErr) {
+        console.warn('Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY JSON:', parseErr);
+      }
     } else if (clientEmail && privateKey) {
       app = initializeApp({
         credential: cert({
