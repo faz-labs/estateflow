@@ -32,6 +32,8 @@ import { Separator } from '@/components/ui/separator';
 import { PlusCircle, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useUserProfile } from '@/hooks/use-user-profile';
+import { toInputDateValue } from '@/lib/date-utils';
 
 const editSaleFormSchema = z.object({
   projectId: z.string().min(1, { message: 'Please select a project.' }),
@@ -61,6 +63,7 @@ interface EditSaleFormProps {
 }
 
 export function EditSaleForm({ sale, setDialogOpen, onSaleUpdated }: EditSaleFormProps) {
+  const { currencySymbol, formatCurrency } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   
@@ -88,7 +91,7 @@ export function EditSaleForm({ sale, setDialogOpen, onSaleUpdated }: EditSaleFor
     defaultValues: {
         ...sale,
         totalPrice: sale.totalPrice - (sale.parkingCharge || 0) - (sale.utilityCharge || 0) - (sale.extraCosts?.reduce((acc, cost) => acc + cost.amount, 0) || 0),
-        saleDate: new Date(sale.saleDate).toISOString().split('T')[0],
+        saleDate: toInputDateValue(sale.saleDate),
     },
   });
 
@@ -116,7 +119,7 @@ export function EditSaleForm({ sale, setDialogOpen, onSaleUpdated }: EditSaleFor
         batch.update(saleDocRef, {
             ...data,
             totalPrice: calculatedTotalPrice,
-            saleDate: new Date(data.saleDate).toISOString(),
+            saleDate: data.saleDate,
         });
         
         // Handle flat status change if flat is changed
@@ -147,9 +150,7 @@ export function EditSaleForm({ sale, setDialogOpen, onSaleUpdated }: EditSaleFor
       });
     }
   }
-  
-  const formatCurrency = (value: number) => `৳${value.toLocaleString('en-IN')}`;
-  
+
   const dueAmount = calculatedTotalPrice - (sale?.downpayment || 0);
 
   return (
@@ -243,7 +244,7 @@ export function EditSaleForm({ sale, setDialogOpen, onSaleUpdated }: EditSaleFor
                                 name="totalPrice"
                                 render={({ field }) => (
                                     <FormItem>
-                                    <FormLabel>Base Price (৳)</FormLabel>
+                                    <FormLabel>Base Price ({currencySymbol})</FormLabel>
                                     <FormControl>
                                         <Input type="number" placeholder="5000000" {...field} />
                                     </FormControl>
@@ -256,7 +257,7 @@ export function EditSaleForm({ sale, setDialogOpen, onSaleUpdated }: EditSaleFor
                                 name="perSftPrice"
                                 render={({ field }) => (
                                     <FormItem>
-                                    <FormLabel>Price per SFT (৳)</FormLabel>
+                                    <FormLabel>Price per SFT ({currencySymbol})</FormLabel>
                                     <FormControl>
                                         <Input type="number" placeholder="5000" {...field} />
                                     </FormControl>
@@ -269,7 +270,7 @@ export function EditSaleForm({ sale, setDialogOpen, onSaleUpdated }: EditSaleFor
                                 name="parkingCharge"
                                 render={({ field }) => (
                                     <FormItem>
-                                    <FormLabel>Parking Charge (৳)</FormLabel>
+                                    <FormLabel>Parking Charge ({currencySymbol})</FormLabel>
                                     <FormControl>
                                         <Input type="number" placeholder="200000" {...field} />
                                     </FormControl>
@@ -282,7 +283,7 @@ export function EditSaleForm({ sale, setDialogOpen, onSaleUpdated }: EditSaleFor
                                 name="utilityCharge"
                                 render={({ field }) => (
                                     <FormItem>
-                                    <FormLabel>Utility Charge (৳)</FormLabel>
+                                    <FormLabel>Utility Charge ({currencySymbol})</FormLabel>
                                     <FormControl>
                                         <Input type="number" placeholder="150000" {...field} />
                                     </FormControl>
@@ -348,7 +349,7 @@ export function EditSaleForm({ sale, setDialogOpen, onSaleUpdated }: EditSaleFor
                                 name="downpayment"
                                 render={({ field }) => (
                                     <FormItem>
-                                    <FormLabel>Downpayment (৳)</FormLabel>
+                                    <FormLabel>Downpayment ({currencySymbol})</FormLabel>
                                     <FormControl>
                                         <Input type="number" placeholder="1000000" {...field} />
                                     </FormControl>
@@ -361,7 +362,7 @@ export function EditSaleForm({ sale, setDialogOpen, onSaleUpdated }: EditSaleFor
                                 name="monthlyInstallment"
                                 render={({ field }) => (
                                     <FormItem>
-                                    <FormLabel>Monthly Installment (৳)</FormLabel>
+                                    <FormLabel>Monthly Installment ({currencySymbol})</FormLabel>
                                     <FormControl>
                                         <Input type="number" placeholder="50000" {...field} />
                                     </FormControl>

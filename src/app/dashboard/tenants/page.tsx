@@ -49,6 +49,7 @@ import {
   Building2,
   Users,
   ShieldCheck,
+  ShieldAlert,
   PlusCircle,
   UserPlus,
   Loader2,
@@ -61,7 +62,13 @@ import {
   Trash2,
   Send,
   Eye,
+  Pencil,
 } from 'lucide-react';
+import {
+  SUPPORTED_CURRENCIES,
+  getCurrency,
+  DEFAULT_CURRENCY_CODE,
+} from '@/lib/currencies';
 
 export default function SuperAdminTenantsPage() {
   const { isSuperAdmin, isLoading: isProfileLoading } = useUserProfile();
@@ -80,11 +87,20 @@ export default function SuperAdminTenantsPage() {
   const [newTenantName, setNewTenantName] = useState('');
   const [newTenantId, setNewTenantId] = useState('');
   const [newTenantPlan, setNewTenantPlan] = useState<'demo' | 'pro' | 'ultra'>('demo');
+  const [newTenantCurrency, setNewTenantCurrency] = useState<string>(DEFAULT_CURRENCY_CODE);
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [adminFirstName, setAdminFirstName] = useState('');
   const [adminLastName, setAdminLastName] = useState('');
   const [isCreatingTenant, setIsCreatingTenant] = useState(false);
+
+  // Edit Tenant & Currency Dialog State
+  const [isEditTenantOpen, setIsEditTenantOpen] = useState(false);
+  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
+  const [editTenantName, setEditTenantName] = useState('');
+  const [editTenantPlan, setEditTenantPlan] = useState<'demo' | 'pro' | 'ultra'>('pro');
+  const [editTenantCurrency, setEditTenantCurrency] = useState<string>(DEFAULT_CURRENCY_CODE);
+  const [isSavingEditTenant, setIsSavingEditTenant] = useState(false);
 
   // 2. Add / Provision User Dialog State
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -144,6 +160,7 @@ export default function SuperAdminTenantsPage() {
           status: data.status || 'active',
           expiresAt: data.expiresAt,
           maxProjects: data.maxProjects,
+          currency: data.currency || DEFAULT_CURRENCY_CODE,
         } as Tenant;
       });
 
@@ -210,6 +227,7 @@ export default function SuperAdminTenantsPage() {
         ownerUid: user?.uid || 'superadmin',
         createdAt: new Date().toISOString(),
         plan: newTenantPlan,
+        currency: newTenantCurrency,
         status: 'active',
         expiresAt,
         maxProjects,
@@ -246,6 +264,7 @@ export default function SuperAdminTenantsPage() {
       setIsCreateTenantOpen(false);
       setNewTenantName('');
       setNewTenantId('');
+      setNewTenantCurrency(DEFAULT_CURRENCY_CODE);
       setAdminEmail('');
       setAdminPassword('');
       setAdminFirstName('');
@@ -423,6 +442,87 @@ export default function SuperAdminTenantsPage() {
     }
   };
 
+  // 6. Open Edit Tenant Dialog
+  const openEditTenantModal = (t: Tenant) => {
+    setEditingTenant(t);
+    setEditTenantName(t.name);
+    setEditTenantPlan((t.plan as 'demo' | 'pro' | 'ultra') || 'pro');
+    setEditTenantCurrency(t.currency || DEFAULT_CURRENCY_CODE);
+    setIsEditTenantOpen(true);
+  };
+
+  // 7. Save Tenant Settings & Currency
+  const handleSaveEditTenant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTenant || !firestore) return;
+
+    if (!editTenantName.trim()) {
+      toast({ variant: 'destructive', title: 'Validation Error', description: 'Company name cannot be empty.' });
+      return;
+    }
+
+    setIsSavingEditTenant(true);
+    try {
+      const tenantDocRef = doc(firestore, 'tenants', editingTenant.id);
+
+      let expiresAt = editingTenant.expiresAt;
+      let maxProjects = editingTenant.maxProjects ?? 999999;
+
+      if (editTenantPlan === 'demo') {
+        if (!expiresAt) {
+          expiresAt = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString();
+        }
+        maxProjects = 5;
+      } else if (editTenantPlan === 'pro') {
+        maxProjects = 10;
+        expiresAt = undefined;
+      } else {
+        maxProjects = 999999;
+        expiresAt = undefined;
+      }
+
+      await updateDoc(tenantDocRef, {
+        name: editTenantName.trim(),
+        plan: editTenantPlan,
+        currency: editTenantCurrency,
+        expiresAt: expiresAt || null,
+        maxProjects,
+      });
+
+      setTenants((prev) =>
+        prev.map((t) =>
+          t.id === editingTenant.id
+            ? {
+                ...t,
+                name: editTenantName.trim(),
+                plan: editTenantPlan,
+                currency: editTenantCurrency,
+                expiresAt,
+                maxProjects,
+              }
+            : t
+        )
+      );
+
+      toast({
+        title: 'Tenant Updated!',
+        description: `Settings and currency (${editTenantCurrency}) saved for "${editTenantName.trim()}".`,
+      });
+
+      setIsEditTenantOpen(false);
+      loadData();
+    } catch (err: any) {
+      console.error('Error updating tenant:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Update Failed',
+        description: err.message || 'Could not update tenant settings.',
+      });
+    } finally {
+      setIsSavingEditTenant(false);
+    }
+  };
+
   if (isProfileLoading) {
     return (
       <div className="flex items-center justify-center p-12 text-sm text-muted-foreground">
@@ -433,12 +533,19 @@ export default function SuperAdminTenantsPage() {
 
   if (!isSuperAdmin) {
     return (
-      <div className="max-w-xl mx-auto mt-12 p-6 rounded-xl border border-destructive/30 bg-destructive/5 text-center space-y-3">
-        <AlertCircle className="h-10 w-10 text-destructive mx-auto" />
-        <h2 className="text-lg font-bold text-destructive">Super Admin Access Required</h2>
-        <p className="text-xs text-muted-foreground">
-          This portal is reserved for root platform administrators (<code>anonto.kings9@gmail.com</code> or <code>admin@remotizedit.online</code>).
-        </p>
+      <div className="max-w-md mx-auto mt-20 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-center space-y-4 shadow-lg">
+        <div className="h-12 w-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-700 dark:text-slate-300">
+          <ShieldAlert className="h-6 w-6" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">Page Restricted</h2>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            You do not have permission to view this administrative resource. If you believe this is an error, please contact your organization administrator.
+          </p>
+        </div>
+        <Button variant="default" size="sm" onClick={() => window.location.assign('/dashboard')} className="mt-2">
+          Return to Dashboard
+        </Button>
       </div>
     );
   }
@@ -592,6 +699,7 @@ export default function SuperAdminTenantsPage() {
                   <TableRow>
                     <TableHead>Company Name</TableHead>
                     <TableHead>Tenant ID</TableHead>
+                    <TableHead>Currency</TableHead>
                     <TableHead>Subscription Plan</TableHead>
                     <TableHead>Access Status</TableHead>
                     <TableHead>Members</TableHead>
@@ -646,6 +754,18 @@ export default function SuperAdminTenantsPage() {
                         </TableCell>
 
                         <TableCell>
+                          {(() => {
+                            const curr = getCurrency(t.currency);
+                            return (
+                              <Badge variant="outline" className="font-mono text-xs font-semibold px-2 py-0.5 bg-background">
+                                <span className="text-primary mr-1">{curr.code}</span>
+                                <span className="text-muted-foreground">({curr.symbol})</span>
+                              </Badge>
+                            );
+                          })()}
+                        </TableCell>
+
+                        <TableCell>
                           <div className="flex items-center gap-1.5">
                             <Badge
                               variant={
@@ -688,6 +808,14 @@ export default function SuperAdminTenantsPage() {
                         </TableCell>
 
                         <TableCell className="text-right space-x-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs h-7 gap-1"
+                            onClick={() => openEditTenantModal(t)}
+                          >
+                            <Pencil className="h-3 w-3" /> Edit / Currency
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -751,22 +879,44 @@ export default function SuperAdminTenantsPage() {
               </p>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="tenant-plan" className="text-xs font-medium">Subscription Tier</Label>
-              <Select
-                value={newTenantPlan}
-                onValueChange={(val: 'demo' | 'pro' | 'ultra') => setNewTenantPlan(val)}
-                disabled={isCreatingTenant}
-              >
-                <SelectTrigger id="tenant-plan" className="text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="demo">Demo Plan (15-Day Trial &bull; Up to 5 projects)</SelectItem>
-                  <SelectItem value="pro">Pro Plan (Up to 10 Projects &bull; Standard Support)</SelectItem>
-                  <SelectItem value="ultra">Ultra Plan (Unlimited Projects &bull; Full Access)</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="tenant-plan" className="text-xs font-medium">Subscription Tier</Label>
+                <Select
+                  value={newTenantPlan}
+                  onValueChange={(val: 'demo' | 'pro' | 'ultra') => setNewTenantPlan(val)}
+                  disabled={isCreatingTenant}
+                >
+                  <SelectTrigger id="tenant-plan" className="text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="demo">Demo (15 Days &bull; 5 Projects)</SelectItem>
+                    <SelectItem value="pro">Pro (10 Projects)</SelectItem>
+                    <SelectItem value="ultra">Ultra (Unlimited)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="tenant-currency" className="text-xs font-medium">Currency</Label>
+                <Select
+                  value={newTenantCurrency}
+                  onValueChange={setNewTenantCurrency}
+                  disabled={isCreatingTenant}
+                >
+                  <SelectTrigger id="tenant-currency" className="text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-56">
+                    {SUPPORTED_CURRENCIES.map((curr) => (
+                      <SelectItem key={curr.code} value={curr.code} className="text-xs">
+                        <span className="font-semibold mr-1.5">{curr.code}</span> ({curr.symbol}) &ndash; {curr.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="pt-3 border-t space-y-3">
@@ -1186,6 +1336,117 @@ export default function SuperAdminTenantsPage() {
               Close
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Dialog: Edit Tenant & Currency Configuration                        */}
+      {/* ------------------------------------------------------------------- */}
+      <Dialog open={isEditTenantOpen} onOpenChange={setIsEditTenantOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <div className="h-10 w-10 rounded-full bg-blue-500/10 text-blue-600 flex items-center justify-center mb-2">
+              <Pencil className="h-5 w-5" />
+            </div>
+            <DialogTitle>Edit Workspace & Currency</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Modify workspace details, subscription plan, and operating currency for this tenant.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingTenant && (
+            <form onSubmit={handleSaveEditTenant} className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-tenant-id" className="text-xs font-medium">Tenant ID (Read-only)</Label>
+                <Input
+                  id="edit-tenant-id"
+                  value={editingTenant.id}
+                  disabled
+                  className="bg-muted font-mono text-xs cursor-not-allowed"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-tenant-name" className="text-xs font-medium">Company / Tenant Name</Label>
+                <Input
+                  id="edit-tenant-name"
+                  placeholder="Company Name"
+                  value={editTenantName}
+                  onChange={(e) => setEditTenantName(e.target.value)}
+                  required
+                  disabled={isSavingEditTenant}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-tenant-plan" className="text-xs font-medium">Subscription Tier</Label>
+                  <Select
+                    value={editTenantPlan}
+                    onValueChange={(val: 'demo' | 'pro' | 'ultra') => setEditTenantPlan(val)}
+                    disabled={isSavingEditTenant}
+                  >
+                    <SelectTrigger id="edit-tenant-plan" className="text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="demo">Demo (15 Days &bull; 5 Projects)</SelectItem>
+                      <SelectItem value="pro">Pro (10 Projects)</SelectItem>
+                      <SelectItem value="ultra">Ultra (Unlimited)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-tenant-currency" className="text-xs font-medium">Operating Currency</Label>
+                  <Select
+                    value={editTenantCurrency}
+                    onValueChange={setEditTenantCurrency}
+                    disabled={isSavingEditTenant}
+                  >
+                    <SelectTrigger id="edit-tenant-currency" className="text-xs font-medium">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-56">
+                      {SUPPORTED_CURRENCIES.map((curr) => (
+                        <SelectItem key={curr.code} value={curr.code} className="text-xs">
+                          <span className="font-semibold mr-1.5">{curr.code}</span> ({curr.symbol}) &ndash; {curr.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground border">
+                <p className="font-medium text-foreground mb-1">Currency Propagation Note:</p>
+                <p>
+                  Setting the currency to <strong>{getCurrency(editTenantCurrency).name} ({getCurrency(editTenantCurrency).code} &bull; {getCurrency(editTenantCurrency).symbol})</strong> updates all dashboard KPIs, projects, receipts, and invoices in real time for all users in this tenant.
+                </p>
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditTenantOpen(false)}
+                  disabled={isSavingEditTenant}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={isSavingEditTenant}>
+                  {isSavingEditTenant ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    'Save Changes'
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </div>

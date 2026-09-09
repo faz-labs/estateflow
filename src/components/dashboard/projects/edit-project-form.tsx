@@ -43,6 +43,8 @@ import { useEffect, useState } from 'react';
 import { PlusCircle, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
+import { useUserProfile } from '@/hooks/use-user-profile';
+import { toInputDateValue } from '@/lib/date-utils';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   AlertDialog,
@@ -94,6 +96,7 @@ export function EditProjectForm({
   project,
   setDialogOpen,
 }: EditProjectFormProps) {
+  const { currencySymbol } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   const [flatsToDelete, setFlatsToDelete] = useState<string[]>([]);
@@ -112,7 +115,7 @@ export function EditProjectForm({
       projectName: project.projectName,
       location: project.location,
       targetSell: project.targetSell,
-      startDate: new Date(project.startDate).toISOString().split('T')[0],
+      startDate: toInputDateValue(project.startDate),
       status: project.status,
       flats: [],
     },
@@ -130,7 +133,7 @@ export function EditProjectForm({
         projectName: project.projectName,
         location: project.location,
         targetSell: project.targetSell,
-        startDate: new Date(project.startDate).toISOString().split('T')[0],
+        startDate: toInputDateValue(project.startDate),
         status: project.status,
         flats: initialFlats.map(flat => ({
             id: flat.id,
@@ -165,7 +168,7 @@ export function EditProjectForm({
         location: data.location,
         status: data.status,
         targetSell: data.targetSell,
-        startDate: new Date(data.startDate).toISOString(),
+        startDate: data.startDate,
         totalFlats: data.flats.length,
       });
 
@@ -260,7 +263,7 @@ export function EditProjectForm({
                 name="targetSell"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Target Sell (৳)</FormLabel>
+                    <FormLabel>Target Sell ({currencySymbol})</FormLabel>
                     <FormControl>
                       <Input
                         type="number"

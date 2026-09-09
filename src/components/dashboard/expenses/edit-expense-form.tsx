@@ -22,6 +22,8 @@ import type { Project, Vendor, ExpenseItem, Expense } from '@/lib/types';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { EnrichedExpense } from '@/app/dashboard/expense/page';
+import { useUserProfile } from '@/hooks/use-user-profile';
+import { toInputDateValue } from '@/lib/date-utils';
 
 const editExpenseFormSchema = z.object({
   vendorId: z.string().min(1, { message: 'Please select a vendor.' }),
@@ -42,6 +44,7 @@ interface EditExpenseFormProps {
 }
 
 export function EditExpenseForm({ expense, setDialogOpen, onUpdate }: EditExpenseFormProps) {
+  const { currencySymbol } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
 
@@ -58,7 +61,7 @@ export function EditExpenseForm({ expense, setDialogOpen, onUpdate }: EditExpens
     resolver: zodResolver(editExpenseFormSchema),
     defaultValues: {
       ...expense,
-      date: new Date(expense.date).toISOString().split('T')[0],
+      date: toInputDateValue(expense.date),
     },
   });
 
@@ -68,7 +71,7 @@ export function EditExpenseForm({ expense, setDialogOpen, onUpdate }: EditExpens
       
       const updatedData = {
         ...data,
-        date: new Date(data.date).toISOString(),
+        date: data.date,
       };
 
       updateDocumentNonBlocking(expenseRef, updatedData);
@@ -172,7 +175,7 @@ export function EditExpenseForm({ expense, setDialogOpen, onUpdate }: EditExpens
                     name="price"
                     render={({ field }) => (
                     <FormItem>
-                        <FormLabel>Total Price (৳)</FormLabel>
+                        <FormLabel>Total Price ({currencySymbol})</FormLabel>
                         <FormControl>
                         <Input type="number" placeholder="5000" {...field} />
                         </FormControl>

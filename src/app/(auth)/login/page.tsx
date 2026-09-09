@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/icons';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, useFirestore, setDocumentNonBlocking } from '@/firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import {
   Dialog,
@@ -25,18 +25,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Loader2, Mail, Lock, UserPlus, LogIn, Building2 } from 'lucide-react';
+import { Loader2, Mail, Lock, LogIn } from 'lucide-react';
 import type { Tenant, TenantInvite, User as UserProfile } from '@/lib/types';
 import { SUPER_ADMIN_EMAILS } from '@/hooks/use-user-profile';
 import { ForceChangePasswordModal } from '@/components/auth/force-change-password-modal';
 
 export default function LoginPage() {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [companyName, setCompanyName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
 
@@ -60,121 +56,42 @@ export default function LoginPage() {
     try {
       const normalizedEmail = email.trim().toLowerCase();
 
-      if (mode === 'login') {
-        // Sign in with Firebase Auth
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
+      // Sign in with Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
 
-        const isSuperAdminEmail = SUPER_ADMIN_EMAILS.includes(normalizedEmail);
+      const isSuperAdminEmail = SUPER_ADMIN_EMAILS.includes(normalizedEmail);
 
-        // Ensure user document exists in Firestore and has tenant metadata
-        const userDocRef = doc(firestore, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
+      // Ensure user document exists in Firestore and has tenant metadata
+      const userDocRef = doc(firestore, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
 
-        if (isSuperAdminEmail) {
-          // Provision or upgrade Super Admin automatically
-          if (!userDoc.exists() || (userDoc.data() as UserProfile).role !== 'SuperAdmin') {
-            const superUserProfile: UserProfile = {
-              id: user.uid,
-              email: normalizedEmail,
-              firstName: normalizedEmail.split('@')[0],
-              lastName: '(SuperAdmin)',
-              role: 'SuperAdmin',
-              tenantId: 'platform_root',
-              companyName: 'Platform SuperAdmin',
-              mustChangePassword: false,
-            };
-            setDocumentNonBlocking(userDocRef, superUserProfile, { merge: true });
-          }
-
-          toast({
-            title: 'Login Success',
-          });
-          setIsRedirecting(true);
-          window.location.assign('/dashboard/tenants');
-          return;
-        }
-
-        if (!userDoc.exists()) {
-          // Check if there was an invite for this user
-          const invitesQuery = query(
-            collection(firestore, 'tenant_invites'),
-            where('email', '==', normalizedEmail),
-            where('status', '==', 'pending')
-          );
-          const inviteSnap = await getDocs(invitesQuery);
-
-          let userTenantId = 'default_workspace';
-          let userCompanyName = 'Default Workspace';
-          let userRole: 'Admin' | 'Accountant' | 'Viewer' = 'Admin';
-
-          if (!inviteSnap.empty) {
-            const inviteDoc = inviteSnap.docs[0];
-            const inviteData = inviteDoc.data() as TenantInvite;
-            userTenantId = inviteData.tenantId;
-            userCompanyName = inviteData.companyName;
-            userRole = inviteData.role;
-            setDocumentNonBlocking(doc(firestore, 'tenant_invites', inviteDoc.id), {
-              status: 'accepted',
-              acceptedAt: new Date().toISOString(),
-            }, { merge: true });
-          }
-
-          const [fName, lName] = user.displayName?.split(' ') || [user.email?.split('@')[0] || 'User', ''];
-          const newUser: UserProfile = {
+      if (isSuperAdminEmail) {
+        // Provision or upgrade Super Admin automatically
+        if (!userDoc.exists() || (userDoc.data() as UserProfile).role !== 'SuperAdmin') {
+          const superUserProfile: UserProfile = {
             id: user.uid,
-            email: user.email || normalizedEmail,
-            firstName: fName,
-            lastName: lName || '',
-            role: userRole,
-            tenantId: userTenantId,
-            companyName: userCompanyName,
+            email: normalizedEmail,
+            firstName: normalizedEmail.split('@')[0],
+            lastName: '(SuperAdmin)',
+            role: 'SuperAdmin',
+            tenantId: 'platform_root',
+            companyName: 'Platform SuperAdmin',
             mustChangePassword: false,
           };
-          setDocumentNonBlocking(userDocRef, newUser, { merge: true });
-        } else {
-          const existingData = userDoc.data() as UserProfile;
-
-          // Check if tenant is suspended
-          if (existingData.tenantId && existingData.tenantId !== 'platform_root') {
-            const tenantDocSnap = await getDoc(doc(firestore, 'tenants', existingData.tenantId));
-            if (tenantDocSnap.exists()) {
-              const tenantData = tenantDocSnap.data() as Tenant;
-              if (tenantData.status === 'suspended') {
-                await auth.signOut();
-                toast({
-                  variant: 'destructive',
-                  title: 'Account Suspended',
-                  description: 'Your organization access is currently suspended. Please contact admin@remotizedit.online.',
-                });
-                setIsLoading(false);
-                return;
-              }
-            }
-          }
-
-          // Check if user is required to change password on first login
-          if (existingData.mustChangePassword) {
-            setIsForceChangeOpen(true);
-            setIsLoading(false);
-            return;
-          }
+          setDocumentNonBlocking(userDocRef, superUserProfile, { merge: true });
         }
 
         toast({
           title: 'Login Success',
         });
         setIsRedirecting(true);
-        window.location.assign('/dashboard');
+        window.location.assign('/dashboard/tenants');
         return;
+      }
 
-      } else {
-        // Explicit Account Creation with Automatic Multi-Tenant Scoping
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        const userDocRef = doc(firestore, 'users', user.uid);
-
-        // Check if this email was invited by an existing company Admin
+      if (!userDoc.exists()) {
+        // Check if there was an invite for this user
         const invitesQuery = query(
           collection(firestore, 'tenant_invites'),
           where('email', '==', normalizedEmail),
@@ -182,83 +99,76 @@ export default function LoginPage() {
         );
         const inviteSnap = await getDocs(invitesQuery);
 
-        let assignedTenantId = '';
-        let assignedCompanyName = '';
-        let assignedRole: 'Admin' | 'Accountant' | 'Viewer' = 'Viewer';
+        let userTenantId = 'default_workspace';
+        let userCompanyName = 'Default Workspace';
+        let userRole: 'Admin' | 'Accountant' | 'Viewer' = 'Viewer';
 
         if (!inviteSnap.empty) {
-          // Join the inviting company!
           const inviteDoc = inviteSnap.docs[0];
           const inviteData = inviteDoc.data() as TenantInvite;
-          assignedTenantId = inviteData.tenantId;
-          assignedCompanyName = inviteData.companyName;
-          assignedRole = inviteData.role;
-
-          // Mark invite accepted
+          userTenantId = inviteData.tenantId;
+          userCompanyName = inviteData.companyName;
+          userRole = inviteData.role;
           setDocumentNonBlocking(doc(firestore, 'tenant_invites', inviteDoc.id), {
             status: 'accepted',
             acceptedAt: new Date().toISOString(),
           }, { merge: true });
-
-          toast({
-            title: 'Joined Workspace!',
-            description: `You have joined ${assignedCompanyName} as ${assignedRole}.`,
-          });
-        } else {
-          // Create a brand new Company / Tenant workspace
-          const orgSlug = (companyName.trim() || 'workspace').toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 16);
-          assignedTenantId = `${orgSlug}-${Date.now().toString(36)}`;
-          assignedCompanyName = companyName.trim() || 'My Real Estate Company';
-          assignedRole = 'Admin'; // First user of an organization is the Admin
-
-          const tenantDocRef = doc(firestore, 'tenants', assignedTenantId);
-          const tenantData: Tenant = {
-            id: assignedTenantId,
-            name: assignedCompanyName,
-            ownerUid: user.uid,
-            createdAt: new Date().toISOString(),
-            plan: 'demo',
-            status: 'active',
-            expiresAt: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
-            maxProjects: 5,
-          };
-          setDocumentNonBlocking(tenantDocRef, tenantData, { merge: true });
-
-          toast({
-            title: 'Organization Created!',
-            description: `Workspace created for ${assignedCompanyName}. You are the Admin.`,
-          });
         }
 
+        const [firstNameVal, lastNameVal] = user.displayName?.split(' ') || [normalizedEmail.split('@')[0], ''];
         const userProfile: UserProfile = {
           id: user.uid,
           email: user.email || normalizedEmail,
-          firstName: firstName.trim() || 'Admin',
-          lastName: lastName.trim() || 'User',
-          role: assignedRole,
-          tenantId: assignedTenantId,
-          companyName: assignedCompanyName,
+          firstName: firstNameVal || 'User',
+          lastName: lastNameVal || '',
+          role: userRole,
+          tenantId: userTenantId,
+          companyName: userCompanyName,
+          mustChangePassword: false,
         };
+        setDocumentNonBlocking(userDocRef, userProfile, { merge: true });
+      } else {
+        const userData = userDoc.data() as UserProfile;
 
-        setDocumentNonBlocking(userDocRef, userProfile, { merge: false });
-        router.push('/dashboard');
+        // Check if tenant is suspended
+        if (userData.tenantId && userData.tenantId !== 'platform_root') {
+          const tenantDoc = await getDoc(doc(firestore, 'tenants', userData.tenantId));
+          if (tenantDoc.exists()) {
+            const tenantData = tenantDoc.data() as Tenant;
+            if (tenantData.status === 'suspended') {
+              throw new Error('Your organization workspace access has been suspended. Please contact platform support.');
+            }
+          }
+        }
+
+        // Check if user is forced to change password at first login
+        if (userData.mustChangePassword) {
+          setIsForceChangeOpen(true);
+          setIsLoading(false);
+          return;
+        }
       }
+
+      toast({
+        title: 'Login Success',
+      });
+      setIsRedirecting(true);
+      window.location.assign('/dashboard');
+      return;
 
     } catch (error: any) {
       console.error('Authentication Error:', error);
       let message = error.message;
 
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
         message = 'Invalid email address or password. Please verify your credentials.';
-      } else if (error.code === 'auth/email-already-in-use') {
-        message = 'An account with this email address already exists. Please log in instead.';
-      } else if (error.code === 'auth/weak-password') {
-        message = 'Password should be at least 6 characters long.';
+      } else if (error.code === 'auth/too-many-requests') {
+        message = 'Too many failed login attempts. Please try again later or reset your password.';
       }
 
       toast({
         variant: 'destructive',
-        title: mode === 'login' ? 'Login Failed' : 'Registration Failed',
+        title: 'Login Failed',
         description: message,
       });
     } finally {
@@ -324,129 +234,59 @@ export default function LoginPage() {
               <Logo className="h-12 w-12" />
             </div>
             <CardTitle className="text-2xl font-bold tracking-tight">
-              {mode === 'login' ? 'Welcome to EstateFlow' : 'Create an Account'}
+              Welcome to EstateFlow
             </CardTitle>
             <CardDescription className="text-xs">
-              {mode === 'login' 
-                ? 'Enter your credentials to access your SaaS management dashboard'
-                : 'Register your details to join EstateFlow'
-              }
+              Enter your credentials to access your management dashboard
             </CardDescription>
           </CardHeader>
 
           <CardContent>
-            {/* Mode Switcher */}
-            <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 dark:bg-slate-900 rounded-lg mb-6">
-              <button
-                type="button"
-                onClick={() => setMode('login')}
-                className={`text-xs font-semibold py-1.5 rounded-md transition-all ${
-                  mode === 'login' 
-                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' 
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('register')}
-                className={`text-xs font-semibold py-1.5 rounded-md transition-all ${
-                  mode === 'register' 
-                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' 
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                Sign Up
-              </button>
-            </div>
-
             <form onSubmit={handleAuthSubmit} className="space-y-4">
-              {mode === 'register' && (
-                <>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="companyName" className="text-xs font-medium">Company / Organization Name</Label>
-                    <div className="relative">
-                      <Building2 className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="companyName"
-                        placeholder="Landmark Homes Ltd."
-                        className="pl-9"
-                        value={companyName}
-                        onChange={(e) => setCompanyName(e.target.value)}
-                        disabled={isLoading}
-                      />
-                    </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      Tip: If invited by an Admin, simply use your invited email to automatically join your workspace.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="firstName" className="text-xs font-medium">First Name</Label>
-                      <Input
-                        id="firstName"
-                        placeholder="John"
-                        required
-                        value={firstName}
-                        onChange={(e) => setFirstName(e.target.value)}
-                        disabled={isLoading}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="lastName" className="text-xs font-medium">Last Name</Label>
-                      <Input
-                        id="lastName"
-                        placeholder="Doe"
-                        required
-                        value={lastName}
-                        onChange={(e) => setLastName(e.target.value)}
-                        disabled={isLoading}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
               <div className="space-y-1.5">
                 <Label htmlFor="email" className="text-xs font-medium">Email Address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="admin@estateflow.com"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={isLoading}
-                />
+                <div className="relative">
+                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="user@company.com"
+                    className="pl-9"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
               </div>
 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password" className="text-xs font-medium">Password</Label>
-                  {mode === 'login' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForgotEmail(email);
-                        setIsForgotOpen(true);
-                      }}
-                      className="text-xs text-primary hover:underline font-medium"
-                    >
-                      Forgot password?
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotEmail(email);
+                      setIsForgotOpen(true);
+                    }}
+                    className="text-xs text-primary hover:underline font-medium"
+                  >
+                    Forgot password?
+                  </button>
                 </div>
-                <Input 
-                  id="password" 
-                  type="password" 
-                  placeholder="••••••••"
-                  required 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={isLoading}
-                />
+                <div className="relative">
+                  <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    id="password" 
+                    type="password" 
+                    placeholder="••••••••"
+                    className="pl-9"
+                    required 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
               </div>
 
               <Button type="submit" className="w-full mt-2" disabled={isLoading || isRedirecting}>
@@ -456,13 +296,11 @@ export default function LoginPage() {
                   </>
                 ) : isLoading ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {mode === 'login' ? 'Signing in...' : 'Creating account...'}
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in...
                   </>
                 ) : (
                   <>
-                    {mode === 'login' ? <LogIn className="mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />}
-                    {mode === 'login' ? 'Sign In to Dashboard' : 'Create Account'}
+                    <LogIn className="mr-2 h-4 w-4" /> Sign In to Dashboard
                   </>
                 )}
               </Button>
@@ -485,14 +323,14 @@ export default function LoginPage() {
           </DialogHeader>
 
           <form onSubmit={handleForgotPassword} className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="forgot-email" className="text-xs font-medium">Email Address</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="forgot-email" className="text-xs font-medium">Account Email</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="forgot-email"
                   type="email"
-                  placeholder="name@company.com"
+                  placeholder="user@company.com"
                   className="pl-9"
                   required
                   value={forgotEmail}
@@ -502,7 +340,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <DialogFooter className="gap-2 sm:gap-0">
+            <DialogFooter className="gap-2 sm:gap-0 pt-2">
               <Button 
                 type="button" 
                 variant="outline" 
@@ -526,12 +364,13 @@ export default function LoginPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Forced Password Change Modal for First-Time Logins */}
+      {/* Force Change Password Dialog on First Login */}
       <ForceChangePasswordModal
         isOpen={isForceChangeOpen}
         onSuccess={() => {
           setIsForceChangeOpen(false);
-          router.push('/dashboard');
+          toast({ title: 'Welcome!', description: 'Password updated. Redirecting to your dashboard...' });
+          window.location.assign('/dashboard');
         }}
       />
     </div>

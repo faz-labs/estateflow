@@ -18,6 +18,7 @@ import { Printer, Save, Loader2, X } from 'lucide-react';
 import type { EnrichedTransaction } from '@/app/dashboard/add-payment/page';
 import type { Customer, Project } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 interface PrintReceiptDialogProps {
   isOpen: boolean;
@@ -34,13 +35,24 @@ export function PrintReceiptDialog({
   customer,
   project,
 }: PrintReceiptDialogProps) {
+  const { tenant, companyName, currencyCode } = useUserProfile();
   const receiptRef = useRef<HTMLDivElement>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const { toast } = useToast();
 
+  const company = {
+    name: tenant?.name || companyName || 'EstateFlow Workspace',
+    logo: tenant?.logo || '',
+    address: tenant?.address || '',
+    phone: tenant?.phone || '',
+    email: tenant?.email || '',
+    website: tenant?.website || '',
+  };
+
   const handlePrint = () => {
-    if (!receiptRef.current) {
+    const printArea = receiptRef.current;
+    if (!printArea) {
       toast({ variant: 'destructive', title: 'Error', description: 'Receipt content is not ready.' });
       return;
     }
@@ -54,7 +66,7 @@ export function PrintReceiptDialog({
         document.body.removeChild(oldFrame);
       }
 
-      // Create an invisible iframe for printing (bypasses browser popup blockers 100%)
+      // Create an invisible iframe for printing (bypasses browser popup blockers)
       const iframe = document.createElement('iframe');
       iframe.id = 'estateflow-print-frame';
       iframe.style.position = 'fixed';
@@ -70,7 +82,14 @@ export function PrintReceiptDialog({
         throw new Error('Unable to access print frame.');
       }
 
-      const printContent = receiptRef.current.innerHTML;
+      // Extract all current styles from document head
+      const styleNodes = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'));
+      let stylesHtml = '';
+      styleNodes.forEach(node => {
+        stylesHtml += node.outerHTML;
+      });
+
+      const printContent = printArea.innerHTML;
 
       iframeDoc.open();
       iframeDoc.write(`
@@ -78,10 +97,11 @@ export function PrintReceiptDialog({
         <html>
           <head>
             <title>Receipt_${payment.receiptId || 'Invoice'}</title>
+            ${stylesHtml}
             <style>
               @page { 
-                size: A4; 
-                margin: 10mm; 
+                size: A4 portrait; 
+                margin: 8mm; 
               }
               * {
                 box-sizing: border-box;
@@ -95,19 +115,21 @@ export function PrintReceiptDialog({
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
               }
-              img {
-                max-width: 100%;
-                height: auto;
-              }
-              table {
-                width: 100%;
-                border-collapse: collapse;
+              #receipt-printable-area {
+                width: 100% !important;
+                max-width: 100% !important;
+                min-height: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+                border: none !important;
               }
             </style>
-            <link rel="stylesheet" href="/globals.css" />
           </head>
           <body>
-            ${printContent}
+            <div id="receipt-printable-area">
+              ${printContent}
+            </div>
           </body>
         </html>
       `);
@@ -129,7 +151,7 @@ export function PrintReceiptDialog({
             }
           }, 2000);
         }
-      }, 400);
+      }, 500);
 
     } catch (error: any) {
       console.error('Printing error:', error);
@@ -160,7 +182,7 @@ export function PrintReceiptDialog({
         logging: false,
       });
       
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
       
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -179,7 +201,7 @@ export function PrintReceiptDialog({
       }
       
       const x = (pdfWidth - finalImgWidth) / 2;
-      const y = (pdfHeight - finalImgHeight) / 2;
+      const y = 0; // Align top of page for crisp invoice layout
       
       pdf.addImage(imgData, 'JPEG', x, y, finalImgWidth, finalImgHeight);
       pdf.save(`Receipt_${payment.receiptId || 'Payment'}.pdf`);
@@ -203,29 +225,37 @@ export function PrintReceiptDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-4xl p-0 overflow-hidden">
-        <DialogHeader className="p-6 pb-3 border-b bg-slate-50/50">
+      <DialogContent className="max-w-4xl p-0 overflow-hidden bg-slate-50 dark:bg-slate-900 border-none shadow-2xl">
+        <DialogHeader className="p-6 pb-4 border-b bg-white dark:bg-slate-950">
           <div className="flex items-center justify-between">
             <div>
               <DialogTitle className="text-xl font-bold tracking-tight">Payment Receipt / Invoice</DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                Receipt #{payment.receiptId} &bull; Generated for {customer?.fullName || payment.customerName || 'Customer'}
+                Receipt #{payment.receiptId} &bull; {customer?.fullName || payment.customerName || 'Customer'}
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[72vh] p-6 bg-slate-100/60 dark:bg-slate-900/60">
-          <div ref={receiptRef} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mx-auto">
-            <Receipt
-              payment={payment}
-              customer={customer}
-              project={project}
-            />
+        <ScrollArea className="max-h-[72vh] p-4 sm:p-6 bg-slate-100/70 dark:bg-slate-900/80">
+          {/* Printable wrapper without shadows or rounded clipping */}
+          <div className="flex justify-center">
+            <div 
+              ref={receiptRef} 
+              className="bg-white text-slate-900 w-full max-w-[210mm] shadow-md border border-slate-200"
+            >
+              <Receipt
+                payment={payment}
+                customer={customer}
+                project={project}
+                company={company}
+                currency={currencyCode}
+              />
+            </div>
           </div>
         </ScrollArea>
 
-        <DialogFooter className="p-4 border-t bg-slate-50 dark:bg-slate-900 flex flex-row items-center justify-between gap-2 sm:justify-between">
+        <DialogFooter className="p-4 border-t bg-white dark:bg-slate-950 flex flex-row items-center justify-between gap-2 sm:justify-between">
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
             <X className="mr-1.5 h-4 w-4" /> Close
           </Button>

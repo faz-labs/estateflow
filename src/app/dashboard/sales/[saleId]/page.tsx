@@ -51,6 +51,7 @@ import {
 } from 'lucide-react';
 import { notFound, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 type SaleDetails = {
   sale: Sale;
@@ -64,6 +65,7 @@ export default function SaleDetailPage({
 }: {
   params: Promise<{ saleId: string }>;
 }) {
+  const { formatCurrency } = useUserProfile();
   const firestore = useFirestore();
   const router = useRouter();
   const { saleId } = use(params);
@@ -122,11 +124,6 @@ export default function SaleDetailPage({
 
     fetchData();
   }, [saleId, firestore]);
-
-  const formatCurrency = (value: number | undefined) => {
-    if (value === undefined || value === null) return 'N/A';
-    return `৳${value.toLocaleString('en-IN')}`;
-  };
 
   if (isLoading) {
     return (

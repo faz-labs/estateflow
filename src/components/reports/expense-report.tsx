@@ -12,6 +12,7 @@ import { exportToCsv } from '@/lib/csv';
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
 import { Download } from 'lucide-react';
+import { isDateWithinRange, formatDateForDisplay } from '@/lib/date-utils';
 
 const statusOptions: { value: ExpenseStatus; label: string }[] = [
     { value: 'Unpaid', label: 'Unpaid' },
@@ -55,10 +56,7 @@ export function ExpenseReport() {
       // Filter
       let filteredData = expenses;
       if (dateRange?.from) {
-        filteredData = filteredData.filter(e => {
-          const expenseDate = new Date(e.date);
-          return expenseDate >= dateRange.from! && expenseDate <= (dateRange.to || dateRange.from!);
-        });
+        filteredData = filteredData.filter(e => isDateWithinRange(e.date, dateRange.from, dateRange.to));
       }
       if (selectedVendorId) {
         filteredData = filteredData.filter(e => e.vendorId === selectedVendorId);
@@ -73,7 +71,7 @@ export function ExpenseReport() {
       // Enrich
       const dataToExport = filteredData.map(e => ({
         'Expense ID': e.expenseId,
-        'Date': new Date(e.date).toLocaleDateString(),
+        'Date': formatDateForDisplay(e.date),
         'Vendor': vendorsMap.get(e.vendorId) || 'N/A',
         'Project': projectsMap.get(e.projectId) || 'N/A',
         'Item': itemsMap.get(e.itemId) || 'N/A',

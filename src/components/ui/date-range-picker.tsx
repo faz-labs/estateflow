@@ -67,20 +67,22 @@ export function DateRangePicker({
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0 flex" align="start">
-            <div className="flex flex-col space-y-2 p-4 border-r">
+        <PopoverContent className="w-auto p-0 flex flex-col sm:flex-row max-w-[95vw] overflow-hidden shadow-2xl border-slate-200 dark:border-slate-800" align="start">
+            <div className="flex flex-col space-y-1 p-3 border-b sm:border-b-0 sm:border-r bg-slate-50/50 dark:bg-slate-900/50 min-w-[140px]">
+                <p className="text-[11px] font-semibold text-muted-foreground px-2 py-1 uppercase tracking-wider">Presets</p>
                 {presets.map((preset) => (
                     <Button 
                         key={preset.name}
                         variant="ghost"
-                        className="justify-start"
+                        size="sm"
+                        className="justify-start text-xs h-8 font-medium"
                         onClick={() => handlePresetClick(preset.range)}
                     >
                         {preset.name}
                     </Button>
                 ))}
             </div>
-            <div>
+            <div className="p-1">
               <Calendar
                 initialFocus
                 mode="range"
@@ -89,8 +91,8 @@ export function DateRangePicker({
                 onSelect={onDateChange}
                 numberOfMonths={2}
               />
-               <div className="p-4 border-t">
-                    <Button onClick={() => onDateChange(undefined)} variant="ghost" className="w-full justify-center">Clear</Button>
+               <div className="p-2 border-t flex items-center justify-end">
+                    <Button onClick={() => onDateChange(undefined)} variant="ghost" size="sm" className="text-xs h-8">Reset Range</Button>
                 </div>
             </div>
         </PopoverContent>

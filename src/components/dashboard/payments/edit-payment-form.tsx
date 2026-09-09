@@ -28,6 +28,8 @@ import { useEffect, useState } from 'react';
 import type { InflowTransaction, Customer, Project, Flat } from '@/lib/types';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useUserProfile } from '@/hooks/use-user-profile';
+import { toInputDateValue } from '@/lib/date-utils';
 
 const editPaymentFormSchema = z.object({
   customerId: z.string().min(1, { message: 'Please select a customer.' }),
@@ -60,6 +62,7 @@ interface EditPaymentFormProps {
 }
 
 export function EditPaymentForm({ payment, setDialogOpen, onUpdate }: EditPaymentFormProps) {
+  const { currencySymbol } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
 
@@ -67,7 +70,7 @@ export function EditPaymentForm({ payment, setDialogOpen, onUpdate }: EditPaymen
     resolver: zodResolver(editPaymentFormSchema),
     defaultValues: {
       ...payment,
-      date: new Date(payment.date).toISOString().split('T')[0],
+      date: toInputDateValue(payment.date),
     },
   });
 
@@ -80,7 +83,7 @@ export function EditPaymentForm({ payment, setDialogOpen, onUpdate }: EditPaymen
       const updatedData = {
         ...data,
         paymentType: data.paymentPurpose === 'Booking Money' ? 'Booking' : 'Installment',
-        date: new Date(data.date).toISOString(),
+        date: data.date,
       };
 
       updateDocumentNonBlocking(paymentRef, updatedData);
@@ -114,7 +117,7 @@ export function EditPaymentForm({ payment, setDialogOpen, onUpdate }: EditPaymen
                     name="amount"
                     render={({ field }) => (
                     <FormItem>
-                        <FormLabel>Amount (৳)</FormLabel>
+                        <FormLabel>Amount ({currencySymbol})</FormLabel>
                         <FormControl>
                         <Input type="number" placeholder="50000" {...field} />
                         </FormControl>

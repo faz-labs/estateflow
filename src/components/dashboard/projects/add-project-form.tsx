@@ -71,7 +71,7 @@ interface AddProjectFormProps {
 export function AddProjectForm({ setDialogOpen }: AddProjectFormProps) {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId } = useUserProfile();
+  const { tenantId, currencySymbol } = useUserProfile();
   const form = useForm<ProjectFormValues>({
     resolver: zodResolver(projectFormSchema),
     defaultValues: {
@@ -182,7 +182,7 @@ export function AddProjectForm({ setDialogOpen }: AddProjectFormProps) {
               name="targetSell"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Target Sell (৳)</FormLabel>
+                  <FormLabel>Target Sell ({currencySymbol})</FormLabel>
                   <FormControl>
                     <Input
                       type="number"

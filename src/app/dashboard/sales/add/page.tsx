@@ -32,6 +32,7 @@ import { Separator } from '@/components/ui/separator';
 import { PlusCircle, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUserProfile } from '@/hooks/use-user-profile';
+import { getTodayDateString } from '@/lib/date-utils';
 
 const addSaleFormSchema = z.object({
   projectId: z.string().min(1, { message: 'Please select a project.' }),
@@ -57,7 +58,7 @@ type AddSaleFormValues = z.infer<typeof addSaleFormSchema>;
 export default function AddSalePage() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId } = useUserProfile();
+  const { tenantId, currencySymbol, formatCurrency } = useUserProfile();
   const router = useRouter();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -91,7 +92,7 @@ export default function AddSalePage() {
       utilityCharge: 0,
       downpayment: 0,
       monthlyInstallment: 0,
-      saleDate: new Date().toISOString().split('T')[0],
+      saleDate: getTodayDateString(),
       note: '',
       deedLink: '',
       extraCosts: [],
@@ -148,9 +149,6 @@ export default function AddSalePage() {
       });
     }
   }
-  
-  const formatCurrency = (value: number) => `৳${value.toLocaleString('en-IN')}`;
-
 
   return (
     <Card>
@@ -247,7 +245,7 @@ export default function AddSalePage() {
                             name="totalPrice"
                             render={({ field }) => (
                                 <FormItem>
-                                <FormLabel>Base Price (৳)</FormLabel>
+                                <FormLabel>Base Price ({currencySymbol})</FormLabel>
                                 <FormControl>
                                     <Input type="number" placeholder="5000000" {...field} />
                                 </FormControl>
@@ -260,7 +258,7 @@ export default function AddSalePage() {
                             name="perSftPrice"
                             render={({ field }) => (
                                 <FormItem>
-                                <FormLabel>Price per SFT (৳)</FormLabel>
+                                <FormLabel>Price per SFT ({currencySymbol})</FormLabel>
                                 <FormControl>
                                     <Input type="number" placeholder="5000" {...field} />
                                 </FormControl>
@@ -273,7 +271,7 @@ export default function AddSalePage() {
                             name="parkingCharge"
                             render={({ field }) => (
                                 <FormItem>
-                                <FormLabel>Parking Charge (৳)</FormLabel>
+                                <FormLabel>Parking Charge ({currencySymbol})</FormLabel>
                                 <FormControl>
                                     <Input type="number" placeholder="200000" {...field} />
                                 </FormControl>
@@ -286,7 +284,7 @@ export default function AddSalePage() {
                             name="utilityCharge"
                             render={({ field }) => (
                                 <FormItem>
-                                <FormLabel>Utility Charge (৳)</FormLabel>
+                                <FormLabel>Utility Charge ({currencySymbol})</FormLabel>
                                 <FormControl>
                                     <Input type="number" placeholder="150000" {...field} />
                                 </FormControl>
@@ -352,7 +350,7 @@ export default function AddSalePage() {
                             name="downpayment"
                             render={({ field }) => (
                                 <FormItem>
-                                <FormLabel>Downpayment (৳)</FormLabel>
+                                <FormLabel>Downpayment ({currencySymbol})</FormLabel>
                                 <FormControl>
                                     <Input type="number" placeholder="1000000" {...field} />
                                 </FormControl>
@@ -365,7 +363,7 @@ export default function AddSalePage() {
                             name="monthlyInstallment"
                             render={({ field }) => (
                                 <FormItem>
-                                <FormLabel>Monthly Installment (৳)</FormLabel>
+                                <FormLabel>Monthly Installment ({currencySymbol})</FormLabel>
                                 <FormControl>
                                     <Input type="number" placeholder="50000" {...field} />
                                 </FormControl>

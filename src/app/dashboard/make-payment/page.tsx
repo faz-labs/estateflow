@@ -55,6 +55,8 @@ import { DateRange } from 'react-day-picker';
 import { exportToCsv } from '@/lib/csv';
 import { OutflowDetails } from '@/components/dashboard/payments/outflow-details';
 import { EditOutflowForm } from '@/components/dashboard/payments/edit-outflow-form';
+import { useUserProfile } from '@/hooks/use-user-profile';
+import { getTodayDateString, formatDateForDisplay, isDateWithinRange } from '@/lib/date-utils';
 
 const makePaymentFormSchema = z.object({
   vendorId: z.string().min(1, { message: 'Please select a vendor.' }),
@@ -75,6 +77,7 @@ export type EnrichedOutflow = OutflowTransaction & {
 const PAYMENTS_PER_PAGE = 10;
 
 export default function MakePaymentPage() {
+  const { formatCurrency, currencySymbol } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   
@@ -102,7 +105,7 @@ export default function MakePaymentPage() {
       vendorId: '',
       expenseId: '',
       amountToPay: 0,
-      paymentDate: new Date().toISOString().split('T')[0],
+      paymentDate: getTodayDateString(),
       paymentMethod: 'Cash',
       reference: '',
     },
@@ -329,8 +332,6 @@ export default function MakePaymentPage() {
     }, 0);
   };
 
-  const formatCurrency = (value: number) => `৳${value.toLocaleString('en-IN')}`;
-
   const dueAmount = selectedExpense ? selectedExpense.price - selectedExpense.paidAmount : 0;
   
   const filteredTransactions = useMemo(() => {
@@ -343,13 +344,7 @@ export default function MakePaymentPage() {
             t.amount.toString().includes(searchTerm)
         );
 
-        const tDate = new Date(t.date);
-        const fromDate = dateRange?.from;
-        const toDate = dateRange?.to;
-        const dateMatch = !dateRange || (
-            (!fromDate || tDate >= fromDate) &&
-            (!toDate || tDate <= toDate)
-        );
+        const dateMatch = isDateWithinRange(t.date, dateRange?.from, dateRange?.to);
 
         return searchMatch && dateMatch;
     });
@@ -363,7 +358,7 @@ export default function MakePaymentPage() {
 
   const handleExport = () => {
     const dataToExport = filteredTransactions.map(tx => ({
-        'Date': new Date(tx.date).toLocaleDateString(),
+        'Date': formatDateForDisplay(tx.date),
         'Vendor': tx.supplierVendor,
         'Project': tx.projectName,
         'Expense ID': tx.expenseId || 'N/A',
@@ -453,7 +448,7 @@ export default function MakePaymentPage() {
                     name="amountToPay"
                     render={({ field }) => (
                         <FormItem>
-                        <FormLabel>Amount to Pay (৳)</FormLabel>
+                        <FormLabel>Amount to Pay ({currencySymbol})</FormLabel>
                         <FormControl>
                             <Input type="number" placeholder="0" {...field} disabled={!selectedExpense} />
                         </FormControl>
@@ -572,7 +567,7 @@ export default function MakePaymentPage() {
                                 <TableRow key={tx.id}>
                                     <TableCell className="font-medium">{tx.supplierVendor}</TableCell>
                                     <TableCell>{tx.projectName}</TableCell>
-                                    <TableCell>{new Date(tx.date).toLocaleDateString()}</TableCell>
+                                    <TableCell>{formatDateForDisplay(tx.date)}</TableCell>
                                     <TableCell className="font-mono">{tx.expenseId || 'N/A'}</TableCell>
                                     <TableCell className="text-right font-semibold">{formatCurrency(tx.amount)}</TableCell>
                                     <TableCell className="text-right">

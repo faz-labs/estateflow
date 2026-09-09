@@ -21,6 +21,8 @@ import type { OperatingCost, OperatingCostItem } from '@/lib/types';
 import { Textarea } from '@/components/ui/textarea';
 import type { EnrichedOperatingCost } from '@/app/dashboard/operating-cost/page';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useUserProfile } from '@/hooks/use-user-profile';
+import { toInputDateValue } from '@/lib/date-utils';
 
 
 const editCostFormSchema = z.object({
@@ -39,6 +41,7 @@ interface EditOperatingCostFormProps {
 }
 
 export function EditOperatingCostForm({ cost, setDialogOpen }: EditOperatingCostFormProps) {
+  const { currencySymbol } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
 
@@ -49,7 +52,7 @@ export function EditOperatingCostForm({ cost, setDialogOpen }: EditOperatingCost
     resolver: zodResolver(editCostFormSchema),
     defaultValues: {
       ...cost,
-      date: new Date(cost.date).toISOString().split('T')[0],
+      date: toInputDateValue(cost.date),
     },
   });
 
@@ -59,7 +62,7 @@ export function EditOperatingCostForm({ cost, setDialogOpen }: EditOperatingCost
       
       const updatedData = {
         ...data,
-        date: new Date(data.date).toISOString(),
+        date: data.date,
       };
 
       updateDocumentNonBlocking(costRef, updatedData);
@@ -99,7 +102,7 @@ export function EditOperatingCostForm({ cost, setDialogOpen }: EditOperatingCost
                     </FormItem>
                 )}/>
                 <FormField control={form.control} name="amount" render={({ field }) => (
-                    <FormItem><FormLabel>Amount (৳)</FormLabel><FormControl><Input type="number" placeholder="5000" {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel>Amount ({currencySymbol})</FormLabel><FormControl><Input type="number" placeholder="5000" {...field} /></FormControl><FormMessage /></FormItem>
                 )}/>
                  <FormField control={form.control} name="description" render={({ field }) => (
                     <FormItem><FormLabel>Description</FormLabel><FormControl><Textarea placeholder="e.g., Monthly office rent" {...field} /></FormControl><FormMessage /></FormItem>

@@ -25,8 +25,15 @@ export interface Tenant {
   createdAt: string;
   plan: SubscriptionPlan;
   status: TenantStatus;
+  currency?: string; // e.g., 'USD', 'GBP', 'CHF', 'BDT', 'EUR'
   expiresAt?: string; // ISO date string for demo expiration (15 days)
   maxProjects?: number; // e.g. 5 for demo, 10 for pro, 999999 for ultra
+  // Company Profile / Branding for Receipts & Invoices:
+  logo?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
 }
 
 export interface TenantInvite {

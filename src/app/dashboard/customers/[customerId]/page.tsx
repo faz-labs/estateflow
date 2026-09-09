@@ -76,6 +76,8 @@ import { EditPaymentForm } from '@/components/dashboard/payments/edit-payment-fo
 import { Receipt } from '@/components/dashboard/receipt';
 import type { EnrichedTransaction } from '@/app/dashboard/add-payment/page';
 import { PrintReceiptDialog } from '@/components/dashboard/payments/PrintReceiptDialog';
+import { useUserProfile } from '@/hooks/use-user-profile';
+import { formatDateForDisplay } from '@/lib/date-utils';
 
 
 type EnrichedSale = Sale & {
@@ -99,6 +101,7 @@ export default function CustomerDetailPage({
 }: {
   params: Promise<{ customerId: string }>;
 }) {
+  const { formatCompactCurrency } = useUserProfile();
   const firestore = useFirestore();
   const router = useRouter();
   const { customerId } = use(params);
@@ -216,7 +219,7 @@ export default function CustomerDetailPage({
   const filteredPayments = useMemo(() => {
     if (!details) return [];
     return details.payments.filter(p => {
-        const date = new Date(p.date).toLocaleDateString();
+        const date = formatDateForDisplay(p.date);
         const searchTerm = searchQuery.toLowerCase();
         return (
             (p.paymentType || '').toLowerCase().includes(searchTerm) ||
@@ -319,13 +322,8 @@ export default function CustomerDetailPage({
   };
 
   const formatCurrency = (value: number) => {
-    if (Math.abs(value) >= 10000000) {
-      return `৳${(value / 10000000).toFixed(2)} Cr`;
-    }
-    if (Math.abs(value) >= 100000) {
-      return `৳${(value / 100000).toFixed(2)} Lacs`;
-    }
-    return `৳${value.toLocaleString('en-IN')}`;
+    if (!value) return '0';
+    return formatCompactCurrency(value);
   };
 
   if (isLoading) {
@@ -447,7 +445,7 @@ export default function CustomerDetailPage({
                       <TableRow key={sale.id}>
                         <TableCell className="font-medium">{sale.flatNumber}</TableCell>
                         <TableCell>{sale.projectName}</TableCell>
-                        <TableCell>{new Date(sale.saleDate).toLocaleDateString()}</TableCell>
+                        <TableCell>{formatDateForDisplay(sale.saleDate)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(sale.totalPrice)}</TableCell>
                       </TableRow>
                     );
@@ -506,7 +504,7 @@ export default function CustomerDetailPage({
                       const sale = sales.find(s => s.flatId === payment.flatId);
                       return (
                           <TableRow key={`${payment.id}-${index}`}>
-                              <TableCell>{new Date(payment.date).toLocaleDateString()}</TableCell>
+                              <TableCell>{formatDateForDisplay(payment.date)}</TableCell>
                               <TableCell>{sale?.projectName || 'N/A'}</TableCell>
                               <TableCell>
                                   <Badge variant={payment.paymentType === 'Booking' ? 'default' : 'secondary'}>{payment.paymentType}</Badge>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth, useFirestore, useUser, useMemoFirebase, setDocumentNonBlocking } from '@/firebase';
 import { doc, getDoc, collection, getDocs, writeBatch, query, updateDoc, where, addDoc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
@@ -38,11 +38,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useUserProfile } from '@/hooks/use-user-profile';
-import { Shield, ShieldAlert, Users, Building, Mail, CheckCircle2, AlertTriangle, Loader2, UserPlus, Building2 } from 'lucide-react';
+import { Shield, ShieldAlert, Users, Building, Mail, CheckCircle2, AlertTriangle, Loader2, UserPlus, Building2, Upload, Image as ImageIcon, Phone, MapPin, Globe, Trash2 } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user } = useUser();
-  const { profile, role, isAdmin, tenantId, companyName, isLoading: isProfileLoading } = useUserProfile();
+  const { profile, role, isAdmin, tenantId, companyName, tenant, isLoading: isProfileLoading } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
 
@@ -52,6 +52,16 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+
+  // Company Profile / Branding state
+  const [companyNameInput, setCompanyNameInput] = useState('');
+  const [companyAddress, setCompanyAddress] = useState('');
+  const [companyPhone, setCompanyPhone] = useState('');
+  const [companyEmail, setCompanyEmail] = useState('');
+  const [companyWebsite, setCompanyWebsite] = useState('');
+  const [companyLogo, setCompanyLogo] = useState('');
+  const [isSavingCompany, setIsSavingCompany] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Team management state
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
@@ -73,6 +83,136 @@ export default function SettingsPage() {
       setEmail(profile.email || user?.email || '');
     }
   }, [profile, user]);
+
+  useEffect(() => {
+    if (tenant) {
+      setCompanyNameInput(tenant.name || companyName || '');
+      setCompanyAddress(tenant.address || '');
+      setCompanyPhone(tenant.phone || '');
+      setCompanyEmail(tenant.email || '');
+      setCompanyWebsite(tenant.website || '');
+      setCompanyLogo(tenant.logo || '');
+    } else if (companyName) {
+      setCompanyNameInput(companyName);
+    }
+  }, [tenant, companyName]);
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid File',
+        description: 'Please select an image file (PNG, JPG, WebP).',
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        // Target maximum dimensions: 400x160 px
+        const MAX_WIDTH = 400;
+        const MAX_HEIGHT = 160;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+          const ratio = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Export as WebP with 0.85 quality for minimal size (< 40KB)
+        const compressedBase64 = canvas.toDataURL('image/webp', 0.85);
+
+        // Check payload size
+        const sizeInKB = Math.round((compressedBase64.length * 3) / 4 / 1024);
+        if (sizeInKB > 100) {
+          toast({
+            variant: 'destructive',
+            title: 'Image Too Large',
+            description: `Compressed image is ${sizeInKB}KB. Please choose a smaller logo.`,
+          });
+          return;
+        }
+
+        setCompanyLogo(compressedBase64);
+        toast({
+          title: 'Logo Prepared',
+          description: `Optimized to ${width}x${height}px (${sizeInKB}KB). Click "Save Company Details" to apply.`,
+        });
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveCompany = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tenantId || !firestore || !isAdmin) {
+      toast({
+        variant: 'destructive',
+        title: 'Unauthorized',
+        description: 'Only Organization Admins can update company branding.',
+      });
+      return;
+    }
+
+    if (!companyNameInput.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Name Required',
+        description: 'Please enter a valid company name.',
+      });
+      return;
+    }
+
+    setIsSavingCompany(true);
+    try {
+      const tenantDocRef = doc(firestore, 'tenants', tenantId);
+      await updateDoc(tenantDocRef, {
+        name: companyNameInput.trim(),
+        address: companyAddress.trim(),
+        phone: companyPhone.trim(),
+        email: companyEmail.trim(),
+        website: companyWebsite.trim(),
+        logo: companyLogo || '',
+      });
+
+      // Synchronize companyName on current user profile
+      if (user) {
+        await updateDoc(doc(firestore, 'users', user.uid), {
+          companyName: companyNameInput.trim(),
+        });
+      }
+
+      toast({
+        title: 'Company Branding Updated',
+        description: 'Company information and logo saved. All future printed receipts and invoices will use this branding.',
+      });
+    } catch (error: any) {
+      console.error('Error updating company profile:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Update Failed',
+        description: error.message || 'Could not update company profile.',
+      });
+    } finally {
+      setIsSavingCompany(false);
+    }
+  };
 
   // Load team users scoped to the current tenant workspace
   const fetchAllUsers = async () => {
@@ -303,6 +443,169 @@ export default function SettingsPage() {
               </Badge>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Company Branding & Receipt Details Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-primary" />
+              <div>
+                <CardTitle>Company Branding & Invoicing Profile</CardTitle>
+                <CardDescription>
+                  Configure your company name, logo, and contact information rendered on all payment receipts and invoices.
+                </CardDescription>
+              </div>
+            </div>
+            {!isAdmin && (
+              <Badge variant="outline" className="text-xs text-muted-foreground">
+                Read-Only (Admin Access Required)
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <form className="space-y-5" onSubmit={handleSaveCompany}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="companyNameInput" className="text-xs font-medium flex items-center gap-1.5">
+                  <Building className="h-3.5 w-3.5 text-muted-foreground" /> Company Name <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="companyNameInput"
+                  value={companyNameInput}
+                  onChange={(e) => setCompanyNameInput(e.target.value)}
+                  placeholder="e.g. Apex Property Developments Ltd."
+                  disabled={!isAdmin || isSavingCompany}
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="companyEmail" className="text-xs font-medium flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5 text-muted-foreground" /> Invoicing / Support Email
+                </Label>
+                <Input
+                  id="companyEmail"
+                  type="email"
+                  value={companyEmail}
+                  onChange={(e) => setCompanyEmail(e.target.value)}
+                  placeholder="e.g. billing@apexdevelopments.com"
+                  disabled={!isAdmin || isSavingCompany}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="companyPhone" className="text-xs font-medium flex items-center gap-1.5">
+                  <Phone className="h-3.5 w-3.5 text-muted-foreground" /> Company Phone / Hotline
+                </Label>
+                <Input
+                  id="companyPhone"
+                  value={companyPhone}
+                  onChange={(e) => setCompanyPhone(e.target.value)}
+                  placeholder="e.g. +880 1700-000000"
+                  disabled={!isAdmin || isSavingCompany}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="companyWebsite" className="text-xs font-medium flex items-center gap-1.5">
+                  <Globe className="h-3.5 w-3.5 text-muted-foreground" /> Official Website
+                </Label>
+                <Input
+                  id="companyWebsite"
+                  value={companyWebsite}
+                  onChange={(e) => setCompanyWebsite(e.target.value)}
+                  placeholder="e.g. www.apexdevelopments.com"
+                  disabled={!isAdmin || isSavingCompany}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="companyAddress" className="text-xs font-medium flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-muted-foreground" /> Office / Registered Address
+              </Label>
+              <Input
+                id="companyAddress"
+                value={companyAddress}
+                onChange={(e) => setCompanyAddress(e.target.value)}
+                placeholder="e.g. Suite 402, Green Tower, Plot 14, Gulshan-2, Dhaka"
+                disabled={!isAdmin || isSavingCompany}
+              />
+            </div>
+
+            {/* Company Logo Upload & Preview */}
+            <div className="space-y-2 pt-1">
+              <Label className="text-xs font-medium flex items-center gap-1.5">
+                <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" /> Company Logo (Printed on Receipts)
+              </Label>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 border rounded-lg bg-slate-50/50 dark:bg-slate-900/50">
+                {companyLogo ? (
+                  <div className="relative group bg-white p-3 rounded-md border border-slate-200 flex items-center justify-center min-w-[160px] h-20 shadow-sm">
+                    <img
+                      src={companyLogo}
+                      alt="Company Logo Preview"
+                      className="max-h-16 max-w-[200px] object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="h-20 w-36 rounded-md border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-muted-foreground text-xs p-2">
+                    <ImageIcon className="h-6 w-6 mb-1 opacity-50" />
+                    <span>No Logo Uploaded</span>
+                  </div>
+                )}
+
+                <div className="flex-1 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/png, image/jpeg, image/webp"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                      disabled={!isAdmin || isSavingCompany}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => logoInputRef.current?.click()}
+                      disabled={!isAdmin || isSavingCompany}
+                      className="flex items-center gap-1.5 text-xs"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      {companyLogo ? 'Change Logo' : 'Upload Logo'}
+                    </Button>
+                    {companyLogo && isAdmin && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCompanyLogo('')}
+                        disabled={isSavingCompany}
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10 text-xs flex items-center gap-1"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Remove
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-normal">
+                    PNG, JPG, or WebP. Automatically resized to max 400&times;160px and compressed (&lt;50KB) to ensure zero server load and crisp A4 printing.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {isAdmin && (
+              <Button type="submit" size="sm" disabled={isSavingCompany}>
+                {isSavingCompany ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {isSavingCompany ? 'Saving Company...' : 'Save Company Details'}
+              </Button>
+            )}
+          </form>
         </CardContent>
       </Card>
 

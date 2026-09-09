@@ -20,6 +20,7 @@ import { useFirestore, useCollection, useMemoFirebase, addDocumentNonBlocking, d
 import { collection, query, doc, writeBatch, getDocs, runTransaction } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useUserProfile } from '@/hooks/use-user-profile';
+import { getTodayDateString, formatDateForDisplay, isDateWithinRange } from '@/lib/date-utils';
 import { useState, useEffect, useMemo } from 'react';
 import type { Project, Vendor, ExpenseItem, Expense, Counter } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -149,7 +150,7 @@ function AddItemForm({ setDialogOpen }: { setDialogOpen: (open: boolean) => void
 export default function AddExpensePage() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId } = useUserProfile();
+  const { tenantId, currencySymbol, formatCurrency } = useUserProfile();
   const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false);
   const [isDataDirty, setIsDataDirty] = useState(true);
   const [expenses, setExpenses] = useState<EnrichedExpense[]>([]);
@@ -227,7 +228,7 @@ export default function AddExpensePage() {
       itemId: '',
       quantity: 1,
       price: 0,
-      date: new Date().toISOString().split('T')[0],
+      date: getTodayDateString(),
       description: '',
     },
   });
@@ -339,13 +340,7 @@ export default function AddExpensePage() {
             exp.price.toString().includes(searchTerm)
         );
 
-        const expDate = new Date(exp.date);
-        const fromDate = dateRange?.from;
-        const toDate = dateRange?.to;
-        const dateMatch = !dateRange || (
-            (!fromDate || expDate >= fromDate) &&
-            (!toDate || expDate <= toDate)
-        );
+        const dateMatch = isDateWithinRange(exp.date, dateRange?.from, dateRange?.to);
 
         return searchMatch && dateMatch;
     });
@@ -368,7 +363,7 @@ export default function AddExpensePage() {
   const handleExport = () => {
     const dataToExport = filteredExpenses.map(exp => ({
         'Expense ID': exp.expenseId,
-        'Date': new Date(exp.date).toLocaleDateString(),
+        'Date': formatDateForDisplay(exp.date),
         'Vendor': exp.vendorName,
         'Project': exp.projectName,
         'Item': exp.itemName,
@@ -380,9 +375,6 @@ export default function AddExpensePage() {
     }));
     exportToCsv(dataToExport, `expenses_${new Date().toISOString().split('T')[0]}.csv`);
   };
-  
-  const formatCurrency = (value: number) => `৳${value.toLocaleString('en-IN')}`;
-
 
   return (
     <div className="space-y-6">
@@ -508,7 +500,7 @@ export default function AddExpensePage() {
                         name="price"
                         render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Total Price (৳)</FormLabel>
+                            <FormLabel>Total Price ({currencySymbol})</FormLabel>
                             <FormControl>
                             <Input type="number" placeholder="5000" {...field} />
                             </FormControl>
@@ -613,7 +605,7 @@ export default function AddExpensePage() {
                                             <TableCell className="font-mono">{expense.expenseId}</TableCell>
                                             <TableCell className="font-medium">{expense.vendorName}</TableCell>
                                             <TableCell>{expense.itemName}</TableCell>
-                                            <TableCell>{new Date(expense.date).toLocaleDateString()}</TableCell>
+                                            <TableCell>{formatDateForDisplay(expense.date)}</TableCell>
                                             <TableCell>
                                                 <Badge variant={
                                                     expense.status === 'Paid' ? 'default' :

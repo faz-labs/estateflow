@@ -3,13 +3,15 @@
 import React from 'react';
 import { EnrichedOutflow } from '@/app/dashboard/make-payment/page';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useUserProfile } from '@/hooks/use-user-profile';
+import { formatDateForDisplay } from '@/lib/date-utils';
 
 interface OutflowDetailsProps {
   payment: EnrichedOutflow;
 }
 
 export const OutflowDetails: React.FC<OutflowDetailsProps> = ({ payment }) => {
-  const formatCurrency = (value: number) => `৳${value.toLocaleString('en-IN')}`;
+  const { formatCurrency } = useUserProfile();
 
   return (
     <ScrollArea className="max-h-[60vh] pr-6">
@@ -28,7 +30,7 @@ export const OutflowDetails: React.FC<OutflowDetailsProps> = ({ payment }) => {
         </div>
         <div className="flex justify-between items-center pb-2 border-b">
           <p className="font-semibold text-primary">Date</p>
-          <p>{new Date(payment.date).toLocaleDateString()}</p>
+          <p>{formatDateForDisplay(payment.date)}</p>
         </div>
         <div className="flex justify-between items-center pb-2 border-b">
           <p className="font-semibold text-primary">Amount</p>

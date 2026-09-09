@@ -19,6 +19,7 @@ import type {
   Customer,
   InflowTransaction,
 } from '@/lib/types';
+import { formatDateForDisplay } from '@/lib/date-utils';
 import {
   Card,
   CardContent,
@@ -35,6 +36,7 @@ import {
 } from '@/components/ui/select';
 import { Combobox } from '@/components/ui/combobox';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 type CustomerSummaryData = {
   customerName: string;
@@ -47,6 +49,7 @@ type CustomerSummaryData = {
 };
 
 export function CustomerSummary() {
+  const { formatCurrency } = useUserProfile();
   const firestore = useFirestore();
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [selectedFlatId, setSelectedFlatId] = useState<string>("");
@@ -132,7 +135,7 @@ export function CustomerSummary() {
           totalPrice: saleData.totalPrice,
           totalPaid: totalPaid,
           totalDue: saleData.totalPrice - totalPaid,
-          lastPaymentDate: lastPayment ? new Date(lastPayment.date).toLocaleDateString() : null,
+          lastPaymentDate: lastPayment ? formatDateForDisplay(lastPayment.date) : null,
           lastPaymentAmount: lastPayment ? lastPayment.amount : null,
         });
 
@@ -145,8 +148,6 @@ export function CustomerSummary() {
 
     fetchSummaryData();
   }, [selectedFlatId, selectedProjectId, firestore]);
-  
-  const formatCurrency = (value: number) => `৳${value.toLocaleString('en-IN')}`;
 
   return (
     <Card>

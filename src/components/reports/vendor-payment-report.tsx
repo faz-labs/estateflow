@@ -12,6 +12,7 @@ import { exportToCsv } from '@/lib/csv';
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
 import { Download } from 'lucide-react';
+import { isDateWithinRange, formatDateForDisplay } from '@/lib/date-utils';
 
 export function VendorPaymentReport() {
   const firestore = useFirestore();
@@ -42,10 +43,7 @@ export function VendorPaymentReport() {
       // Filter
       let filteredData = outflows;
       if (dateRange?.from) {
-        filteredData = filteredData.filter(p => {
-          const paymentDate = new Date(p.date);
-          return paymentDate >= dateRange.from! && paymentDate <= (dateRange.to || dateRange.from!);
-        });
+        filteredData = filteredData.filter(p => isDateWithinRange(p.date, dateRange.from, dateRange.to));
       }
       if (selectedVendor) {
         filteredData = filteredData.filter(p => p.supplierVendor === selectedVendor);
@@ -56,7 +54,7 @@ export function VendorPaymentReport() {
 
       // Enrich
       const dataToExport = filteredData.map(p => ({
-        'Date': new Date(p.date).toLocaleDateString(),
+        'Date': formatDateForDisplay(p.date),
         'Vendor': p.supplierVendor,
         'Project': p.projectId ? projectsMap.get(p.projectId) : 'Office/General',
         'Expense ID': p.expenseId || 'N/A',

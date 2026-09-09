@@ -50,6 +50,8 @@ import { useEffect, useState, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { EditSaleForm } from '@/components/dashboard/sales/edit-sale-form';
 import { Input } from '@/components/ui/input';
+import { useUserProfile } from '@/hooks/use-user-profile';
+import { formatDateForDisplay } from '@/lib/date-utils';
 
 type EnrichedSale = Sale & {
     projectName: string;
@@ -60,6 +62,7 @@ type EnrichedSale = Sale & {
 const ITEMS_PER_PAGE = 15;
 
 export default function SalesPage() {
+  const { formatCompactCurrency } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   const [sales, setSales] = useState<Sale[]>([]);
@@ -195,13 +198,7 @@ export default function SalesPage() {
 
   const formatCurrency = (value: number) => {
     if (!value) return 'N/A';
-    if (Math.abs(value) >= 10000000) {
-      return `৳${(value / 10000000).toFixed(2)} Cr`;
-    }
-    if (Math.abs(value) >= 100000) {
-      return `৳${(value / 100000).toFixed(2)} Lacs`;
-    }
-    return `৳${value.toLocaleString('en-IN')}`;
+    return formatCompactCurrency(value);
   };
 
   const filteredSales = useMemo(() => {
@@ -299,7 +296,7 @@ export default function SalesPage() {
                         </TableCell>
                         <TableCell>{sale.projectName}</TableCell>
                         <TableCell>{sale.flatNumber}</TableCell>
-                        <TableCell>{new Date(sale.saleDate).toLocaleDateString()}</TableCell>
+                        <TableCell>{formatDateForDisplay(sale.saleDate)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(sale.totalPrice)}</TableCell>
                         <TableCell className="text-right">
                             <DropdownMenu>

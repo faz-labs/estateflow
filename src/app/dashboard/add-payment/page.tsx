@@ -43,6 +43,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
 import { useUserProfile } from '@/hooks/use-user-profile';
+import { getTodayDateString, formatDateForDisplay, isDateWithinRange } from '@/lib/date-utils';
 import type {
   Project,
   Customer,
@@ -141,7 +142,7 @@ export type EnrichedTransaction = InflowTransaction & {
 export default function AddPaymentPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId } = useUserProfile();
+  const { tenantId, currencySymbol, formatCurrency } = useUserProfile();
   const router = useRouter();
 
   const [projectsForCustomer, setProjectsForCustomer] = useState<Project[]>([]);
@@ -176,7 +177,7 @@ export default function AddPaymentPage() {
       paymentPurpose: 'Installment',
       otherPurpose: '',
       reference: '',
-      date: new Date().toISOString().split('T')[0],
+      date: getTodayDateString(),
     },
   });
 
@@ -376,7 +377,7 @@ export default function AddPaymentPage() {
         
         toast({
             title: 'Payment Recorded',
-            description: `Payment of ৳${data.amount} has been successfully recorded with Receipt ID: ${receiptId}.`,
+            description: `Payment of ${formatCurrency(data.amount)} has been successfully recorded with Receipt ID: ${receiptId}.`,
         });
 
         if (customer && project && flat) {
@@ -421,16 +422,10 @@ export default function AddPaymentPage() {
             tx.flatNumber.toLowerCase().includes(searchTerm) ||
             (tx.paymentMethod || '').toLowerCase().includes(searchTerm) ||
             tx.amount.toString().includes(searchTerm) ||
-            new Date(tx.date).toLocaleDateString().includes(searchTerm)
+            formatDateForDisplay(tx.date).toLowerCase().includes(searchTerm)
         );
 
-        const txDate = new Date(tx.date);
-        const fromDate = dateRange?.from;
-        const toDate = dateRange?.to;
-        const dateMatch = !dateRange || (
-            (!fromDate || txDate >= fromDate) &&
-            (!toDate || txDate <= toDate)
-        );
+        const dateMatch = isDateWithinRange(tx.date, dateRange?.from, dateRange?.to);
 
         return searchMatch && dateMatch;
     });
@@ -439,7 +434,7 @@ export default function AddPaymentPage() {
   const handleExport = () => {
     const dataToExport = filteredTransactions.map(tx => ({
         'Receipt ID': tx.receiptId,
-        'Date': new Date(tx.date).toLocaleDateString(),
+        'Date': formatDateForDisplay(tx.date),
         'Customer': tx.customerName,
         'Project': tx.projectName,
         'Flat': tx.flatNumber,
@@ -546,8 +541,6 @@ export default function AddPaymentPage() {
       setIsViewDialogOpen(true);
     }, 0);
   };
-
-    const formatCurrency = (value: number) => `৳${value.toLocaleString('en-IN')}`;
 
   return (
     <div className="space-y-6">
@@ -688,7 +681,7 @@ export default function AddPaymentPage() {
                       name="amount"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Amount (৳)</FormLabel>
+                          <FormLabel>Amount ({currencySymbol})</FormLabel>
                           <FormControl>
                             <Input type="number" placeholder="50000" {...field} />
                           </FormControl>
@@ -840,7 +833,7 @@ export default function AddPaymentPage() {
                           <div className="text-sm text-muted-foreground">{tx.flatNumber}</div>
                       </TableCell>
                       <TableCell>
-                        {new Date(tx.date).toLocaleDateString()}
+                        {formatDateForDisplay(tx.date)}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">{tx.paymentMethod}</Badge>

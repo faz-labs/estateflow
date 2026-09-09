@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useUser, useFirestore } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import type { User as UserProfile, Tenant, SubscriptionPlan, TenantStatus } from '@/lib/types';
+import { getCurrency, formatCurrency as formatCurrencyUtil, formatCompactCurrency as formatCompactCurrencyUtil, DEFAULT_CURRENCY_CODE } from '@/lib/currencies';
 
 export const SUPER_ADMIN_EMAILS = [
   'anonto.kings9@gmail.com',
@@ -26,6 +27,10 @@ export interface UserProfileState {
   isDemoExpired: boolean;
   daysRemainingInDemo: number | null;
   tenantPlan: SubscriptionPlan;
+  currencyCode: string;
+  currencySymbol: string;
+  formatCurrency: (amount: number | null | undefined) => string;
+  formatCompactCurrency: (amount: number | null | undefined) => string;
   isLoading: boolean;
   error: Error | null;
 }
@@ -143,6 +148,12 @@ export function useUserProfile(): UserProfileState {
     }
   }
 
+  const currencyCode = tenant?.currency || DEFAULT_CURRENCY_CODE;
+  const currencyItem = getCurrency(currencyCode);
+  const currencySymbol = currencyItem.symbol;
+  const formatCurrency = (amount: number | null | undefined) => formatCurrencyUtil(amount, currencyCode);
+  const formatCompactCurrency = (amount: number | null | undefined) => formatCompactCurrencyUtil(amount, currencyCode);
+
   return {
     profile,
     tenant,
@@ -158,6 +169,10 @@ export function useUserProfile(): UserProfileState {
     isDemoExpired,
     daysRemainingInDemo,
     tenantPlan,
+    currencyCode,
+    currencySymbol,
+    formatCurrency,
+    formatCompactCurrency,
     isLoading: isAuthLoading || isLoading,
     error,
   };

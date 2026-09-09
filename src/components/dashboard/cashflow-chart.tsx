@@ -8,6 +8,7 @@ import { collectionGroup, getDocs, query } from "firebase/firestore"
 import { useEffect, useState } from "react"
 import { format, subMonths } from "date-fns"
 import type { InflowTransaction, OutflowTransaction } from "@/lib/types"
+import { useUserProfile } from "@/hooks/use-user-profile"
 
 const chartConfig = {
   inflow: {
@@ -21,6 +22,7 @@ const chartConfig = {
 }
 
 export function CashflowChart() {
+  const { formatCompactCurrency } = useUserProfile();
   const firestore = useFirestore();
   const [chartData, setChartData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -103,7 +105,7 @@ export function CashflowChart() {
                 fontSize={12}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(value) => `৳${value / 100000}L`}
+                tickFormatter={(value) => formatCompactCurrency(value)}
                 />
                 <Tooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent />} />
                 <Legend />

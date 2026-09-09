@@ -12,6 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
 import { Download } from 'lucide-react';
 
+import { isDateWithinRange, formatDateForDisplay } from '@/lib/date-utils';
+
 export function SalesReport() {
   const firestore = useFirestore();
   const { toast } = useToast();
@@ -50,8 +52,7 @@ export function SalesReport() {
 
       // 2. Filter by date range
       const filteredSales = dateRange?.from ? sales.filter(sale => {
-        const saleDate = new Date(sale.saleDate);
-        return saleDate >= dateRange.from! && saleDate <= (dateRange.to || dateRange.from!);
+        return isDateWithinRange(sale.saleDate, dateRange.from, dateRange.to);
       }) : sales;
 
       // 3. Enrich data
@@ -62,7 +63,7 @@ export function SalesReport() {
 
         return {
           'Sale ID': sale.id,
-          'Sale Date': new Date(sale.saleDate).toLocaleDateString(),
+          'Sale Date': formatDateForDisplay(sale.saleDate),
           'Customer Name': customer?.fullName || 'N/A',
           'Project Name': project?.projectName || 'N/A',
           'Flat Number': flat?.flatNumber || 'N/A',

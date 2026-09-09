@@ -28,8 +28,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Building, Phone, User as UserIcon, ArrowLeft } from 'lucide-react';
+import { formatDateForDisplay } from '@/lib/date-utils';
 import { notFound, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { formatCompactCurrency } from '@/lib/currencies';
 
 type EnrichedFlat = Flat & {
   customer?: {
@@ -61,6 +63,7 @@ export default function ProjectDetailPage({
   const { projectId } = use(params);
 
   const [project, setProject] = useState<Project | null>(null);
+  const [projectCurrency, setProjectCurrency] = useState<string>('USD');
   const [enrichedFlats, setEnrichedFlats] = useState<EnrichedFlat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +85,18 @@ export default function ProjectDetailPage({
         }
         const projectData = projectSnap.data() as Project;
         setProject(projectData);
+
+        // Fetch Tenant currency if available
+        if (projectData.tenantId) {
+          try {
+            const tenantSnap = await getDoc(doc(firestore, 'tenants', projectData.tenantId));
+            if (tenantSnap.exists()) {
+              setProjectCurrency(tenantSnap.data().currency || 'USD');
+            }
+          } catch {
+            // Ignore if anonymous or restricted
+          }
+        }
 
         // 2. Fetch Flats
         const flatsQuery = query(collection(firestore, `projects/${projectId}/flats`));
@@ -158,13 +173,7 @@ export default function ProjectDetailPage({
 
   const formatCurrency = (value: number) => {
     if (!value) return 'N/A';
-    if (Math.abs(value) >= 10000000) {
-      return `৳${(value / 10000000).toFixed(2)} Cr`;
-    }
-    if (Math.abs(value) >= 100000) {
-      return `৳${(value / 100000).toFixed(2)} Lacs`;
-    }
-    return `৳${value.toLocaleString('en-IN')}`;
+    return formatCompactCurrency(value, projectCurrency);
   };
 
   const soldCount = enrichedFlats.filter(f => f.status === 'Sold').length;
@@ -203,7 +212,7 @@ export default function ProjectDetailPage({
             </div>
             <div>
               <strong>Start Date:</strong>{' '}
-              {new Date(project.startDate).toLocaleDateString()}
+              {formatDateForDisplay(project.startDate)}
             </div>
             <div>
               <strong>Status:</strong>{' '}

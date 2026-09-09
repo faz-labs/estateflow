@@ -61,7 +61,7 @@ const ITEMS_PER_PAGE = 15;
 export default function ProjectsPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId, tenant, tenantPlan, isSuperAdmin } = useUserProfile();
+  const { tenantId, tenant, tenantPlan, isSuperAdmin, formatCompactCurrency } = useUserProfile();
 
   const projectsQuery = useMemoFirebase(
     () => {
@@ -159,13 +159,7 @@ export default function ProjectsPage() {
 
   const formatCurrency = (value: number) => {
     if (!value) return 'N/A';
-    if (Math.abs(value) >= 10000000) {
-      return `৳${(value / 10000000).toFixed(2)} Cr`;
-    }
-    if (Math.abs(value) >= 100000) {
-      return `৳${(value / 100000).toFixed(2)} Lacs`;
-    }
-    return `৳${value.toLocaleString('en-IN')}`;
+    return formatCompactCurrency(value);
   };
 
   const filteredProjects = useMemo(() => {

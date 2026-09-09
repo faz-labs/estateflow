@@ -20,6 +20,8 @@ import { useToast } from '@/hooks/use-toast';
 import type { OutflowTransaction, Expense } from '@/lib/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { EnrichedOutflow } from '@/app/dashboard/make-payment/page';
+import { useUserProfile } from '@/hooks/use-user-profile';
+import { toInputDateValue } from '@/lib/date-utils';
 
 const editOutflowSchema = z.object({
   amount: z.coerce.number().min(1, { message: 'Amount must be greater than 0.' }),
@@ -37,6 +39,7 @@ interface EditOutflowFormProps {
 }
 
 export function EditOutflowForm({ payment, setDialogOpen, onUpdate }: EditOutflowFormProps) {
+  const { currencySymbol } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
 
@@ -44,7 +47,7 @@ export function EditOutflowForm({ payment, setDialogOpen, onUpdate }: EditOutflo
     resolver: zodResolver(editOutflowSchema),
     defaultValues: {
       amount: payment.amount,
-      date: new Date(payment.date).toISOString().split('T')[0],
+      date: toInputDateValue(payment.date),
       paymentMethod: payment.paymentMethod || 'Cash',
       reference: payment.reference || '',
     },
@@ -83,7 +86,7 @@ export function EditOutflowForm({ payment, setDialogOpen, onUpdate }: EditOutflo
 
             transaction.update(paymentRef, {
                 ...data,
-                date: new Date(data.date).toISOString(),
+                date: data.date,
             });
         });
 
@@ -115,7 +118,7 @@ export function EditOutflowForm({ payment, setDialogOpen, onUpdate }: EditOutflo
                 name="amount"
                 render={({ field }) => (
                     <FormItem>
-                    <FormLabel>Amount (৳)</FormLabel>
+                    <FormLabel>Amount ({currencySymbol})</FormLabel>
                     <FormControl>
                         <Input type="number" {...field} />
                     </FormControl>

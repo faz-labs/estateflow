@@ -11,9 +11,11 @@ import { useEffect, useState } from "react";
 import type { InflowTransaction, OutflowTransaction, Project, Sale, Expense, OperatingCost } from "@/lib/types";
 import { ProjectSummary } from "@/components/dashboard/project-summary";
 import { CustomerSummary } from "@/components/dashboard/customer-summary";
+import { useUserProfile } from "@/hooks/use-user-profile";
 
 
 export default function DashboardPage() {
+  const { formatCompactCurrency: formatCurrency } = useUserProfile();
   const firestore = useFirestore();
   const [stats, setStats] = useState({
     totalRevenue: 0,
@@ -99,16 +101,6 @@ export default function DashboardPage() {
       }));
     }
   }, [operatingCosts]);
-  
-  const formatCurrency = (value: number) => {
-    if (Math.abs(value) >= 10000000) {
-      return `৳${(value / 10000000).toFixed(2)} Cr`;
-    }
-    if (Math.abs(value) >= 100000) {
-      return `৳${(value / 100000).toFixed(2)} Lacs`;
-    }
-    return `৳${value.toLocaleString('en-IN')}`;
-  };
 
   const activeProjects = projects?.filter(p => p.status === 'Ongoing').length || 0;
   const planningProjects = projects?.filter(p => p.status === 'Planning').length || 0;

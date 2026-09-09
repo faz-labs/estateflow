@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/select';
 import { Combobox } from '@/components/ui/combobox';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 type ProjectSummaryData = {
   projectName: string;
@@ -50,6 +51,7 @@ type ProjectSummaryData = {
 };
 
 export function ProjectSummary() {
+  const { formatCompactCurrency: formatCurrency } = useUserProfile();
   const firestore = useFirestore();
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [summary, setSummary] = useState<ProjectSummaryData | null>(null);
@@ -122,16 +124,6 @@ export function ProjectSummary() {
 
     fetchSummaryData();
   }, [selectedProjectId, firestore]);
-
-  const formatCurrency = (value: number) => {
-    if (Math.abs(value) >= 10000000) {
-      return `৳${(value / 10000000).toFixed(2)} Cr`;
-    }
-    if (Math.abs(value) >= 100000) {
-      return `৳${(value / 100000).toFixed(2)} Lacs`;
-    }
-    return `৳${value.toLocaleString('en-IN')}`;
-  };
 
   return (
     <Card>

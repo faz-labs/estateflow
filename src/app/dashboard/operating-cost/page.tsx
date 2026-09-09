@@ -20,6 +20,7 @@ import { useFirestore, useCollection, useMemoFirebase, addDocumentNonBlocking, d
 import { collection, query, doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useUserProfile } from '@/hooks/use-user-profile';
+import { getTodayDateString, formatDateForDisplay } from '@/lib/date-utils';
 import { useState, useMemo, useCallback } from 'react';
 import type { OperatingCost, OperatingCostItem } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -82,7 +83,7 @@ const ITEMS_PER_PAGE = 10;
 export default function OperatingCostPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId } = useUserProfile();
+  const { tenantId, currencySymbol, formatCurrency } = useUserProfile();
   const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false);
   
   // Data for forms and list
@@ -103,7 +104,7 @@ export default function OperatingCostPage() {
   const form = useForm<AddCostFormValues>({
     resolver: zodResolver(addCostFormSchema),
     defaultValues: {
-      date: new Date().toISOString().split('T')[0],
+      date: getTodayDateString(),
       itemId: '',
       description: '',
       reference: '',
@@ -193,8 +194,6 @@ export default function OperatingCostPage() {
 
   const totalPages = Math.ceil(filteredCosts.length / ITEMS_PER_PAGE);
 
-  const formatCurrency = (value: number) => `৳${value.toLocaleString('en-IN')}`;
-
   return (
     <div className="space-y-6">
         <Card>
@@ -235,7 +234,7 @@ export default function OperatingCostPage() {
                                 <FormMessage>{form.formState.errors.itemId?.message}</FormMessage>
                             </FormItem>
                              <FormField control={form.control} name="amount" render={({ field }) => (
-                                <FormItem><FormLabel>Amount (৳)</FormLabel><FormControl><Input type="number" placeholder="5000" {...field} /></FormControl><FormMessage /></FormItem>
+                                <FormItem><FormLabel>Amount ({currencySymbol})</FormLabel><FormControl><Input type="number" placeholder="5000" {...field} /></FormControl><FormMessage /></FormItem>
                             )}/>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -293,7 +292,7 @@ export default function OperatingCostPage() {
                             <TableBody>
                                 {paginatedCosts.map(cost => (
                                     <TableRow key={cost.id}>
-                                        <TableCell>{new Date(cost.date).toLocaleDateString()}</TableCell>
+                                        <TableCell>{formatDateForDisplay(cost.date)}</TableCell>
                                         <TableCell className="font-medium">{cost.itemName}</TableCell>
                                         <TableCell className="max-w-[300px] truncate">{cost.description}</TableCell>
                                         <TableCell className="text-right font-semibold">{formatCurrency(cost.amount)}</TableCell>

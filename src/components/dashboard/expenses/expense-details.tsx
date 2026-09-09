@@ -4,13 +4,15 @@
 import React from 'react';
 import { EnrichedExpense } from '@/app/dashboard/expense/page';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useUserProfile } from '@/hooks/use-user-profile';
+import { formatDateForDisplay } from '@/lib/date-utils';
 
 interface ExpenseDetailsProps {
   expense: EnrichedExpense;
 }
 
 export const ExpenseDetails: React.FC<ExpenseDetailsProps> = ({ expense }) => {
-  const formatCurrency = (value: number) => `৳${value.toLocaleString('en-IN')}`;
+  const { formatCurrency } = useUserProfile();
 
   return (
     <ScrollArea className="max-h-[60vh] pr-6">
@@ -29,7 +31,7 @@ export const ExpenseDetails: React.FC<ExpenseDetailsProps> = ({ expense }) => {
         </div>
         <div className="flex justify-between items-center pb-2 border-b">
           <p className="font-semibold text-primary">Date</p>
-          <p>{new Date(expense.date).toLocaleDateString()}</p>
+          <p>{formatDateForDisplay(expense.date)}</p>
         </div>
         <div className="flex justify-between items-center pb-2 border-b">
           <p className="font-semibold text-primary">Quantity</p>

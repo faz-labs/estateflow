@@ -77,6 +77,8 @@ import { useToast } from '@/hooks/use-toast';
 import { ExpenseDetails } from '@/components/dashboard/expenses/expense-details';
 import { EditExpenseForm } from '@/components/dashboard/expenses/edit-expense-form';
 import type { EnrichedExpense } from '@/app/dashboard/expense/page';
+import { useUserProfile } from '@/hooks/use-user-profile';
+import { formatDateForDisplay } from '@/lib/date-utils';
 
 
 type EnrichedOutflow = OutflowTransaction & {
@@ -99,6 +101,7 @@ export default function VendorDetailPage({
 }: {
   params: Promise<{ vendorId: string }>;
 }) {
+  const { formatCompactCurrency } = useUserProfile();
   const firestore = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
@@ -327,13 +330,8 @@ export default function VendorDetailPage({
 
 
   const formatCurrency = (value: number) => {
-    if (Math.abs(value) >= 10000000) {
-      return `৳${(value / 10000000).toFixed(2)} Cr`;
-    }
-    if (Math.abs(value) >= 100000) {
-      return `৳${(value / 100000).toFixed(2)} Lacs`;
-    }
-    return `৳${value.toLocaleString('en-IN')}`;
+    if (!value) return '0';
+    return formatCompactCurrency(value);
   };
 
   if (isLoading) {
@@ -465,7 +463,7 @@ export default function VendorDetailPage({
                 <TableBody>
                   {paginatedExpenses.map(expense => (
                     <TableRow key={expense.id}>
-                        <TableCell>{new Date(expense.date).toLocaleDateString()}</TableCell>
+                        <TableCell>{formatDateForDisplay(expense.date)}</TableCell>
                         <TableCell>{expense.projectName}</TableCell>
                         <TableCell>{expense.itemName}</TableCell>
                         <TableCell>
@@ -557,7 +555,7 @@ export default function VendorDetailPage({
                 <TableBody>
                   {paginatedPayments.map(payment => (
                       <TableRow key={payment.id}>
-                          <TableCell>{new Date(payment.date).toLocaleDateString()}</TableCell>
+                          <TableCell>{formatDateForDisplay(payment.date)}</TableCell>
                           <TableCell>{payment.projectName}</TableCell>
                           <TableCell>
                             <Badge variant="outline">{payment.paymentMethod}</Badge>
