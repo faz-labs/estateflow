@@ -196,18 +196,20 @@ export default function LoginPage() {
       });
 
       const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
+      let data: any = null;
+
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
         const errorText = await response.text();
         console.error('Non-JSON server response:', errorText);
         throw new Error(
-          `Server returned an unexpected response (${response.status}). Please ensure Mailcow SMTP environment variables (SMTP_HOST, SMTP_USER, SMTP_PASS) are added to Vercel.`
+          `Server returned an error (${response.status}): ${errorText.slice(0, 150) || 'Internal error'}`
         );
       }
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to dispatch password reset email.');
+        throw new Error(data?.error || `Server responded with status ${response.status}`);
       }
 
       if (data.warning) {

@@ -4,9 +4,12 @@ import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 
 /**
  * Initializes and exports the Firebase Admin SDK instance.
- * Supports initialization via FIREBASE_SERVICE_ACCOUNT_KEY,
- * FIREBASE_ADMIN_CLIENT_EMAIL + FIREBASE_ADMIN_PRIVATE_KEY,
- * or standard application default credentials.
+ * Supports initialization via FIREBASE_SERVICE_ACCOUNT_KEY or
+ * FIREBASE_ADMIN_CLIENT_EMAIL + FIREBASE_ADMIN_PRIVATE_KEY.
+ *
+ * NOTE: On serverless platforms like Vercel (AWS Lambda), we do NOT initialize
+ * without credentials, because doing so causes Admin SDK to query GCE metadata (169.254.169.254),
+ * which hangs indefinitely on non-GCP hosts and triggers a 504/500 execution timeout.
  */
 let app: App | null = null;
 let adminAuth: Auth | null = null;
@@ -32,6 +35,9 @@ try {
 
         if (trimmed.startsWith('{')) {
           const parsed = JSON.parse(trimmed);
+          if (parsed.private_key) {
+            parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+          }
           app = initializeApp({
             credential: cert(parsed),
             projectId: parsed.project_id || projectId,
@@ -61,9 +67,8 @@ try {
         projectId,
       });
     } else {
-      app = initializeApp({
-        projectId,
-      });
+      // Intentionally omit initializeApp without credentials to prevent GCE metadata hang on Vercel
+      app = null;
     }
   }
 

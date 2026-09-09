@@ -3,6 +3,18 @@ import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 import { adminAuth } from '@/lib/firebase-admin';
 
+export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
+
+function cleanEnvStr(val?: string): string {
+  if (!val) return '';
+  let trimmed = val.trim();
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
 export async function POST(request: Request) {
   try {
     const { email } = await request.json();
@@ -15,20 +27,20 @@ export async function POST(request: Request) {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    const smtpHost = process.env.SMTP_HOST;
-    const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
-    const smtpUser = process.env.SMTP_USER;
-    const smtpPass = process.env.SMTP_PASS;
-    const smtpSecure = process.env.SMTP_SECURE === 'true';
-    const smtpFromName = process.env.SMTP_FROM_NAME || 'EstateFlow Support';
-    const smtpFromEmail = process.env.SMTP_FROM_EMAIL || smtpUser || 'noreply@remotizedit.online';
+    const smtpHost = cleanEnvStr(process.env.SMTP_HOST);
+    const smtpPort = parseInt(cleanEnvStr(process.env.SMTP_PORT) || '587', 10);
+    const smtpUser = cleanEnvStr(process.env.SMTP_USER);
+    const smtpPass = cleanEnvStr(process.env.SMTP_PASS);
+    const smtpSecure = cleanEnvStr(process.env.SMTP_SECURE) === 'true';
+    const smtpFromName = cleanEnvStr(process.env.SMTP_FROM_NAME) || 'EstateFlow Support';
+    const smtpFromEmail = cleanEnvStr(process.env.SMTP_FROM_EMAIL) || smtpUser || 'noreply@remotizedit.online';
     
     // Dynamically detect host or fallback to NEXT_PUBLIC_APP_URL
     const requestHost = request.headers.get('x-forwarded-host') || request.headers.get('host');
     const proto = request.headers.get('x-forwarded-proto') || 'https';
     const dynamicOrigin = requestHost ? `${proto}://${requestHost}` : 'http://localhost:9002';
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || dynamicOrigin;
-    const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+    const appUrl = cleanEnvStr(process.env.NEXT_PUBLIC_APP_URL) || dynamicOrigin;
+    const projectId = cleanEnvStr(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID);
 
     // Verify SMTP settings are configured
     if (
@@ -41,7 +53,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { 
           success: false,
-          warning: 'Mailcow SMTP is not configured. Please add SMTP_HOST, SMTP_USER, and SMTP_PASS to environment variables (e.g. on Vercel).',
+          warning: 'Mailcow SMTP is not configured. Please add SMTP_HOST, SMTP_USER, and SMTP_PASS to environment variables on Vercel.',
           configured: false,
         },
         { status: 200 }
@@ -54,7 +66,12 @@ export async function POST(request: Request) {
 
     if (adminAuth) {
       try {
-        const link = await adminAuth.generatePasswordResetLink(normalizedEmail);
+        const link = await Promise.race([
+          adminAuth.generatePasswordResetLink(normalizedEmail),
+          new Promise<string>((_, reject) =>
+            setTimeout(() => reject(new Error('Admin SDK reset link timeout')), 3000)
+          ),
+        ]);
         const urlObj = new URL(link);
         const oobCode = urlObj.searchParams.get('oobCode');
         if (oobCode) {
@@ -85,6 +102,7 @@ export async function POST(request: Request) {
                 createdAt: { stringValue: new Date().toISOString() },
               },
             }),
+            signal: AbortSignal.timeout(3000),
           });
         } catch (fsErr) {
           console.warn('Failed to store custom reset token in Firestore:', fsErr);
@@ -106,6 +124,9 @@ export async function POST(request: Request) {
       tls: {
         rejectUnauthorized: false,
       },
+      connectionTimeout: 8000,
+      greetingTimeout: 5000,
+      socketTimeout: 8000,
     });
 
     // Branded HTML email template - NO Firebase or Google mentions!
@@ -162,7 +183,10 @@ export async function POST(request: Request) {
         error: error.message || 'Failed to send reset email through Mailcow SMTP.',
         details: error.code || 'SMTP_TRANSACTION_FAILED'
       },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
     );
   }
 }
