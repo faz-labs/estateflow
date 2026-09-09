@@ -12,27 +12,29 @@ import { useToast } from '@/hooks/use-toast';
 import { Download } from 'lucide-react';
 
 export function CustomerReport() {
-  const { tenantId } = useUserProfile();
+  const { tenantId, isSuperAdmin } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleExport = async () => {
-    if (!firestore || !tenantId) return;
+    if (!firestore || (!tenantId && !isSuperAdmin)) return;
     setIsLoading(true);
     try {
       // 1. Fetch tenant-scoped data sets concurrently.
       const [customersSnap, salesSnap, projectsSnap, inflowsSnap] = await Promise.all([
-        getDocs(query(collection(firestore, 'customers'), where('tenantId', '==', tenantId))),
-        getDocs(query(collection(firestore, 'sales'), where('tenantId', '==', tenantId))),
-        getDocs(query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
-        getDocs(query(collectionGroup(firestore, 'inflowTransactions'), where('tenantId', '==', tenantId))),
+        getDocs(isSuperAdmin ? collection(firestore, 'customers') : query(collection(firestore, 'customers'), where('tenantId', '==', tenantId))),
+        getDocs(isSuperAdmin ? collection(firestore, 'sales') : query(collection(firestore, 'sales'), where('tenantId', '==', tenantId))),
+        getDocs(isSuperAdmin ? collection(firestore, 'projects') : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
+        getDocs(query(collectionGroup(firestore, 'inflowTransactions'))),
       ]);
 
       const customers = customersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
       const sales = salesSnap.docs.map(doc => doc.data() as Sale);
       const projects = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
-      const inflows = inflowsSnap.docs.map(doc => doc.data() as InflowTransaction);
+      const tenantProjectIds = new Set(projects.map(p => p.id));
+      const allInflows = inflowsSnap.docs.map(doc => doc.data() as InflowTransaction);
+      const inflows = allInflows.filter(t => isSuperAdmin || (t.tenantId ? t.tenantId === tenantId : (t.projectId ? tenantProjectIds.has(t.projectId) : false)));
 
       // 2. Create efficient lookup maps for projects and later for flats.
       const projectsMap = new Map(projects.map(p => [p.id, p.projectName]));

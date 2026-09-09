@@ -16,7 +16,7 @@ import { Download } from 'lucide-react';
 import { isDateWithinRange, formatDateForDisplay } from '@/lib/date-utils';
 
 export function PaymentLogReport() {
-  const { tenantId } = useUserProfile();
+  const { tenantId, isSuperAdmin } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -25,24 +25,24 @@ export function PaymentLogReport() {
   const [isLoading, setIsLoading] = useState(false);
 
   const projectsQuery = useMemoFirebase(
-    () => (!firestore || !tenantId ? null : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
-    [firestore, tenantId]
+    () => (!firestore || (!tenantId && !isSuperAdmin) ? null : isSuperAdmin ? collection(firestore, 'projects') : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId, isSuperAdmin]
   );
   const { data: projects, isLoading: projectsLoading } = useCollection<Project>(projectsQuery);
 
   const customersQuery = useMemoFirebase(
-    () => (!firestore || !tenantId ? null : query(collection(firestore, 'customers'), where('tenantId', '==', tenantId))),
-    [firestore, tenantId]
+    () => (!firestore || (!tenantId && !isSuperAdmin) ? null : isSuperAdmin ? collection(firestore, 'customers') : query(collection(firestore, 'customers'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId, isSuperAdmin]
   );
   const { data: customers, isLoading: customersLoading } = useCollection<Customer>(customersQuery);
 
   const handleExport = async () => {
-    if (!firestore || !tenantId) return;
+    if (!firestore || (!tenantId && !isSuperAdmin)) return;
     setIsLoading(true);
     try {
-      const inflowsQuery = query(collectionGroup(firestore, 'inflowTransactions'), where('tenantId', '==', tenantId));
-      const projectsQuery = query(collection(firestore, 'projects'), where('tenantId', '==', tenantId));
-      const customersQuery = query(collection(firestore, 'customers'), where('tenantId', '==', tenantId));
+      const inflowsQuery = query(collectionGroup(firestore, 'inflowTransactions'));
+      const projectsQuery = isSuperAdmin ? collection(firestore, 'projects') : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId));
+      const customersQuery = isSuperAdmin ? collection(firestore, 'customers') : query(collection(firestore, 'customers'), where('tenantId', '==', tenantId));
       
       const [inflowsSnap, projectsSnap, customersSnap] = await Promise.all([
         getDocs(inflowsQuery),
@@ -50,8 +50,10 @@ export function PaymentLogReport() {
         getDocs(customersQuery),
       ]);
 
-      const inflows = inflowsSnap.docs.map(doc => doc.data() as InflowTransaction);
       const projects = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+      const tenantProjectIds = new Set(projects.map(p => p.id));
+      const allInflows = inflowsSnap.docs.map(doc => doc.data() as InflowTransaction);
+      const inflows = allInflows.filter(t => isSuperAdmin || (t.tenantId ? t.tenantId === tenantId : (t.projectId ? tenantProjectIds.has(t.projectId) : false)));
       const customers = customersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
       
       const customersMap = new Map(customers.map(c => [c.id, c]));

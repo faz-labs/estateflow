@@ -12,19 +12,19 @@ import { useToast } from '@/hooks/use-toast';
 import { Download } from 'lucide-react';
 
 export function VendorReport() {
-  const { tenantId } = useUserProfile();
+  const { tenantId, isSuperAdmin } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleExport = async () => {
-    if (!firestore || !tenantId) return;
+    if (!firestore || (!tenantId && !isSuperAdmin)) return;
     setIsLoading(true);
     try {
       // 1. Fetch tenant-scoped data
-      const vendorsQuery = query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId));
-      const expensesQuery = query(collection(firestore, 'expenses'), where('tenantId', '==', tenantId));
-      const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'), where('tenantId', '==', tenantId));
+      const vendorsQuery = isSuperAdmin ? collection(firestore, 'vendors') : query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId));
+      const expensesQuery = isSuperAdmin ? collection(firestore, 'expenses') : query(collection(firestore, 'expenses'), where('tenantId', '==', tenantId));
+      const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'));
 
       const [vendorsSnap, expensesSnap, outflowsSnap] = await Promise.all([
         getDocs(vendorsQuery),
@@ -34,7 +34,8 @@ export function VendorReport() {
 
       const vendors = vendorsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Vendor));
       const expenses = expensesSnap.docs.map(doc => doc.data() as Expense);
-      const outflows = outflowsSnap.docs.map(doc => doc.data() as OutflowTransaction);
+      const allOutflows = outflowsSnap.docs.map(doc => doc.data() as OutflowTransaction);
+      const outflows = allOutflows.filter(o => isSuperAdmin || (o.tenantId ? o.tenantId === tenantId : true));
 
       // 2. Process and enrich data
       const dataToExport = vendors.map(vendor => {

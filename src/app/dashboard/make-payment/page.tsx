@@ -77,7 +77,7 @@ export type EnrichedOutflow = OutflowTransaction & {
 const PAYMENTS_PER_PAGE = 10;
 
 export default function MakePaymentPage() {
-  const { tenantId, formatCurrency, currencySymbol, isViewer, tenant, companyName } = useUserProfile();
+  const { tenantId, isSuperAdmin, formatCurrency, currencySymbol, isViewer, tenant, companyName } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   
@@ -97,8 +97,8 @@ export default function MakePaymentPage() {
 
   // Data for forms
   const vendorsQuery = useMemoFirebase(
-    () => (!firestore || !tenantId ? null : query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId))),
-    [firestore, tenantId]
+    () => (!firestore || (!tenantId && !isSuperAdmin) ? null : isSuperAdmin ? collection(firestore, 'vendors') : query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId, isSuperAdmin]
   );
   const { data: vendors, isLoading: vendorsLoading } = useCollection<Vendor>(vendorsQuery);
 
@@ -121,25 +121,31 @@ export default function MakePaymentPage() {
   useEffect(() => {
     form.setValue('expenseId', '');
     setSelectedExpense(null);
-    if (!vendorId) {
+    if (!vendorId || !firestore || (!tenantId && !isSuperAdmin)) {
       setUnpaidExpenses([]);
       return;
     }
 
     const fetchUnpaidExpenses = async () => {
-      const expensesQuery = query(
-        collection(firestore, 'expenses'),
-        where('tenantId', '==', tenantId),
-        where('vendorId', '==', vendorId),
-        where('status', 'in', ['Unpaid', 'Partially Paid'])
-      );
+      const expensesQuery = isSuperAdmin
+        ? query(
+            collection(firestore, 'expenses'),
+            where('vendorId', '==', vendorId),
+            where('status', 'in', ['Unpaid', 'Partially Paid'])
+          )
+        : query(
+            collection(firestore, 'expenses'),
+            where('tenantId', '==', tenantId),
+            where('vendorId', '==', vendorId),
+            where('status', 'in', ['Unpaid', 'Partially Paid'])
+          );
       const querySnapshot = await getDocs(expensesQuery);
       const expenses = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Expense));
       setUnpaidExpenses(expenses);
     };
 
     fetchUnpaidExpenses();
-  }, [vendorId, firestore, form, isDataDirty]);
+  }, [vendorId, firestore, form, isDataDirty, tenantId, isSuperAdmin]);
 
   // Set the selected expense details when an expense ID is chosen
   useEffect(() => {
@@ -152,28 +158,33 @@ export default function MakePaymentPage() {
 
   // Fetch Outflow transactions for the log
   useEffect(() => {
-    if (!isDataDirty || !tenantId || !firestore) return;
+    if (!isDataDirty || (!tenantId && !isSuperAdmin) || !firestore) return;
 
     const fetchOutflows = async () => {
         setIsLoadingLog(true);
         try {
-            const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'), where('tenantId', '==', tenantId));
+            const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'), limit(200));
             const [outflowSnap, projectsSnap, itemsSnap, expensesSnap] = await Promise.all([
                 getDocs(outflowsQuery),
-                getDocs(query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
-                getDocs(query(collection(firestore, 'expenseItems'), where('tenantId', '==', tenantId))),
-                getDocs(query(collection(firestore, 'expenses'), where('tenantId', '==', tenantId))),
+                getDocs(isSuperAdmin ? collection(firestore, 'projects') : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
+                getDocs(isSuperAdmin ? collection(firestore, 'expenseItems') : query(collection(firestore, 'expenseItems'), where('tenantId', '==', tenantId))),
+                getDocs(isSuperAdmin ? collection(firestore, 'expenses') : query(collection(firestore, 'expenses'), where('tenantId', '==', tenantId))),
             ]);
             
             const projectsMap = new Map(projectsSnap.docs.map(d => [d.id, d.data().projectName]));
+            const tenantProjectIds = new Set(projectsSnap.docs.map(d => d.id));
             const expensesMap = new Map(expensesSnap.docs.map(d => {
                 const data = d.data() as Expense;
                 return [data.expenseId, { itemId: data.itemId, projectId: data.projectId, docId: d.id }];
             }));
             const itemsMap = new Map(itemsSnap.docs.map(d => [d.id, d.data().name]));
 
-            const enriched = outflowSnap.docs.map(doc => {
-                const data = { ...doc.data(), id: doc.id } as OutflowTransaction;
+            const allOutflows = outflowSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as OutflowTransaction));
+            const filteredOutflows = allOutflows.filter(tx => 
+                isSuperAdmin || (tx.tenantId ? tx.tenantId === tenantId : (tx.projectId ? tenantProjectIds.has(tx.projectId) : false))
+            );
+
+            const enriched = filteredOutflows.map(data => {
                 const expenseDetails = data.expenseId ? expensesMap.get(data.expenseId) : undefined;
                 const itemName = expenseDetails ? itemsMap.get(expenseDetails.itemId) : 'N/A';
                 const projectName = expenseDetails ? projectsMap.get(expenseDetails.projectId) : (data.projectId ? projectsMap.get(data.projectId) : 'Office');
@@ -193,12 +204,13 @@ export default function MakePaymentPage() {
                 title: 'Error Loading Payments',
                 description: 'Could not fetch vendor payment data.',
             })
+        } finally {
+            setIsLoadingLog(false);
+            setIsDataDirty(false);
         }
-        setIsLoadingLog(false);
-        setIsDataDirty(false);
     };
     fetchOutflows();
-  }, [firestore, isDataDirty, toast, tenantId]);
+  }, [firestore, isDataDirty, toast, tenantId, isSuperAdmin]);
 
   async function onSubmit(data: MakePaymentFormValues) {
     if (isViewer) {

@@ -55,9 +55,10 @@ export default function DashboardPage() {
     const fetchStats = async () => {
       setIsLoading(true);
       try {
+        const tenantProjectIds = new Set((projects || []).map(p => p.id));
         const salesQuery = query(collection(firestore, 'sales'), where('tenantId', '==', tenantId));
-        const inflowsQuery = query(collectionGroup(firestore, 'inflowTransactions'), where('tenantId', '==', tenantId));
-        const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'), where('tenantId', '==', tenantId));
+        const inflowsQuery = query(collectionGroup(firestore, 'inflowTransactions'));
+        const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'));
         const expensesQuery = query(collection(firestore, 'expenses'), where('tenantId', '==', tenantId));
 
         const [salesSnap, inflowSnap, outflowSnap, expensesSnap] = await Promise.all([
@@ -68,8 +69,16 @@ export default function DashboardPage() {
         ]);
 
         const totalRevenue = salesSnap.docs.reduce((sum, doc) => sum + (doc.data() as Sale).totalPrice, 0);
-        const totalInflow = inflowSnap.docs.reduce((sum, doc) => sum + (doc.data() as InflowTransaction).amount, 0);
-        const totalOutflow = outflowSnap.docs.reduce((sum, doc) => sum + (doc.data() as OutflowTransaction).amount, 0);
+        const filteredInflows = inflowSnap.docs
+          .map(d => d.data() as InflowTransaction)
+          .filter(t => t.tenantId === tenantId || (t.projectId ? tenantProjectIds.has(t.projectId) : false));
+        const totalInflow = filteredInflows.reduce((sum, tx) => sum + tx.amount, 0);
+
+        const filteredOutflows = outflowSnap.docs
+          .map(d => d.data() as OutflowTransaction)
+          .filter(t => t.tenantId === tenantId || (t.projectId ? tenantProjectIds.has(t.projectId) : false));
+        const totalOutflow = filteredOutflows.reduce((sum, tx) => sum + tx.amount, 0);
+
         const totalExpenses = expensesSnap.docs.reduce((sum, doc) => sum + (doc.data() as Expense).price, 0);
 
         setStats(prev => ({

@@ -51,15 +51,15 @@ type ProjectSummaryData = {
 };
 
 export function ProjectSummary() {
-  const { formatCompactCurrency: formatCurrency, tenantId } = useUserProfile();
+  const { formatCompactCurrency: formatCurrency, tenantId, isSuperAdmin } = useUserProfile();
   const firestore = useFirestore();
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [summary, setSummary] = useState<ProjectSummaryData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const projectsQuery = useMemoFirebase(
-    () => (firestore && tenantId ? query(collection(firestore, 'projects'), where('tenantId', '==', tenantId)) : null),
-    [firestore, tenantId]
+    () => (!firestore || (!tenantId && !isSuperAdmin) ? null : isSuperAdmin ? collection(firestore, 'projects') : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId, isSuperAdmin]
   );
   const { data: projects, isLoading: projectsLoading } =
     useCollection<Project>(projectsQuery);

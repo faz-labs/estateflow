@@ -163,7 +163,7 @@ function AddItemForm({ setDialogOpen }: { setDialogOpen: (open: boolean) => void
 export default function AddExpensePage() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId, currencySymbol, formatCurrency, isViewer } = useUserProfile();
+  const { tenantId, currencySymbol, formatCurrency, isViewer, isSuperAdmin } = useUserProfile();
   const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false);
   const [isDataDirty, setIsDataDirty] = useState(true);
   const [expenses, setExpenses] = useState<EnrichedExpense[]>([]);
@@ -179,38 +179,43 @@ export default function AddExpensePage() {
 
   // Data fetching for form
   const vendorsQuery = useMemoFirebase(
-    () => (!firestore || !tenantId ? null : query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId))),
-    [firestore, tenantId]
+    () => (!firestore || (!tenantId && !isSuperAdmin) ? null : isSuperAdmin ? collection(firestore, 'vendors') : query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId, isSuperAdmin]
   );
   const { data: vendors, isLoading: vendorsLoading } = useCollection<Vendor>(vendorsQuery);
 
   const projectsQuery = useMemoFirebase(
-    () => (!firestore || !tenantId ? null : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
-    [firestore, tenantId]
+    () => (!firestore || (!tenantId && !isSuperAdmin) ? null : isSuperAdmin ? collection(firestore, 'projects') : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId, isSuperAdmin]
   );
   const { data: projects, isLoading: projectsLoading } = useCollection<Project>(projectsQuery);
 
   const itemsQuery = useMemoFirebase(
-    () => (!firestore || !tenantId ? null : query(collection(firestore, 'expenseItems'), where('tenantId', '==', tenantId))),
-    [firestore, tenantId]
+    () => (!firestore || (!tenantId && !isSuperAdmin) ? null : isSuperAdmin ? collection(firestore, 'expenseItems') : query(collection(firestore, 'expenseItems'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId, isSuperAdmin]
   );
   const { data: expenseItems, isLoading: itemsLoading } = useCollection<ExpenseItem>(itemsQuery);
 
   // Fetch and enrich expenses for the log
   useEffect(() => {
-    // Definitive Guard: Ensure all data dependencies are loaded and available.
-    if (!isDataDirty || !vendors || !projects || !expenseItems || !tenantId) {
+    if (!firestore || (!tenantId && !isSuperAdmin) || !isDataDirty) {
+      return;
+    }
+    if (vendorsLoading || projectsLoading || itemsLoading) {
       return;
     }
     
     const fetchAndEnrichExpenses = async () => {
         setIsLoadingLog(true);
         try {
-            const expensesSnap = await getDocs(query(collection(firestore, 'expenses'), where('tenantId', '==', tenantId)));
+            const expensesQuery = isSuperAdmin
+              ? collection(firestore, 'expenses')
+              : query(collection(firestore, 'expenses'), where('tenantId', '==', tenantId));
+            const expensesSnap = await getDocs(expensesQuery);
             
-            const vendorsMap = new Map(vendors.map(d => [d.id, d.vendorName]));
-            const projectsMap = new Map(projects.map(d => [d.id, d.projectName]));
-            const itemsMap = new Map(expenseItems.map(d => [d.id, d.name]));
+            const vendorsMap = new Map((vendors || []).map(d => [d.id, d.vendorName]));
+            const projectsMap = new Map((projects || []).map(d => [d.id, d.projectName]));
+            const itemsMap = new Map((expenseItems || []).map(d => [d.id, d.name]));
 
             const enriched = expensesSnap.docs.map(doc => {
                 const expense = { ...doc.data(), id: doc.id } as Expense;
@@ -232,14 +237,15 @@ export default function AddExpensePage() {
               description: error.message || "Could not fetch expense data from the database."
             });
             setExpenses([]);
+        } finally {
+            setIsLoadingLog(false);
+            setIsDataDirty(false);
         }
-        setIsLoadingLog(false);
-        setIsDataDirty(false);
     };
     
     fetchAndEnrichExpenses();
 
-  }, [firestore, toast, isDataDirty, vendors, projects, expenseItems, tenantId]);
+  }, [firestore, toast, isDataDirty, vendors, projects, expenseItems, vendorsLoading, projectsLoading, itemsLoading, tenantId, isSuperAdmin]);
 
 
   const form = useForm<AddExpenseFormValues>({

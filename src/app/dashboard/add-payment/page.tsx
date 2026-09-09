@@ -142,7 +142,7 @@ export type EnrichedTransaction = InflowTransaction & {
 export default function AddPaymentPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId, currencySymbol, formatCurrency, isViewer, tenant, companyName } = useUserProfile();
+  const { tenantId, currencySymbol, formatCurrency, isViewer, isSuperAdmin, tenant, companyName } = useUserProfile();
   const router = useRouter();
 
   const [projectsForCustomer, setProjectsForCustomer] = useState<Project[]>([]);
@@ -160,8 +160,12 @@ export default function AddPaymentPage() {
 
   // Data fetching for form dropdowns
   const customersQuery = useMemoFirebase(
-    () => (!firestore || !tenantId ? null : query(collection(firestore, 'customers'), where('tenantId', '==', tenantId))),
-    [firestore, tenantId]
+    () => {
+      if (!firestore || !tenantId) return null;
+      if (isSuperAdmin) return query(collection(firestore, 'customers'));
+      return query(collection(firestore, 'customers'), where('tenantId', '==', tenantId));
+    },
+    [firestore, tenantId, isSuperAdmin]
   );
   const { data: customers, isLoading: customersLoading } =
     useCollection<Customer>(customersQuery);
@@ -191,31 +195,44 @@ export default function AddPaymentPage() {
     setIsLogLoading(true);
     try {
       // 1. Fetch tenant-scoped projects and customers to create lookup maps
-      const projectsSnap = await getDocs(query(collection(firestore, 'projects'), where('tenantId', '==', tenantId)));
-      const customersSnap = await getDocs(query(collection(firestore, 'customers'), where('tenantId', '==', tenantId)));
+      const projectsSnap = await getDocs(
+        isSuperAdmin
+          ? query(collection(firestore, 'projects'))
+          : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))
+      );
+      const customersSnap = await getDocs(
+        isSuperAdmin
+          ? query(collection(firestore, 'customers'))
+          : query(collection(firestore, 'customers'), where('tenantId', '==', tenantId))
+      );
       const projectsMap = new Map(projectsSnap.docs.map(d => [d.id, d.data() as Project]));
       const customersMap = new Map(customersSnap.docs.map(d => [d.id, d.data() as Customer]));
+      const tenantProjectIds = new Set(projectsSnap.docs.map(d => d.id));
       
       // Fetch all flats from tenant's projects
       const allFlatsMap = new Map<string, Flat>();
-        for (const project of projectsMap.values()) {
-            const flatsQuery = query(collection(firestore, `projects/${project.id}/flats`));
-            const flatsSnap = await getDocs(flatsQuery);
-            flatsSnap.forEach(doc => {
-                allFlatsMap.set(doc.id, doc.data() as Flat);
-            });
-        }
+      for (const project of projectsMap.values()) {
+        const flatsQuery = query(collection(firestore, `projects/${project.id}/flats`));
+        const flatsSnap = await getDocs(flatsQuery);
+        flatsSnap.forEach(doc => {
+          allFlatsMap.set(doc.id, doc.data() as Flat);
+        });
+      }
 
-      // 2. Fetch last 20 inflow transactions scoped to current tenant
+      // 2. Fetch inflow transactions without where clause to eliminate collectionGroup index requirement
       const inflowsQuery = query(
         collectionGroup(firestore, 'inflowTransactions'),
-        where('tenantId', '==', tenantId),
-        limit(20)
+        limit(150)
       );
       const inflowSnap = await getDocs(inflowsQuery);
-      const inflows = inflowSnap.docs.map(
+      const allInflows = inflowSnap.docs.map(
         doc => ({ ...doc.data(), id: doc.id } as InflowTransaction)
       );
+
+      // Filter strictly by tenantId or tenant's projects
+      const inflows = allInflows
+        .filter(tx => isSuperAdmin || (tx.tenantId ? tx.tenantId === tenantId : tenantProjectIds.has(tx.projectId)))
+        .slice(0, 20);
 
       // 3. Enrich transactions with names synchronously
       const enriched: EnrichedTransaction[] = inflows.map(tx => {
@@ -253,12 +270,10 @@ export default function AddPaymentPage() {
       form.setValue('flatId', '');
 
       if (customerId && firestore && tenantId) {
-        // Find all sales for the selected customer scoped to tenant
-        const salesQuery = query(
-          collection(firestore, 'sales'),
-          where('customerId', '==', customerId),
-          where('tenantId', '==', tenantId)
-        );
+        // Find sales for the selected customer scoped to tenant
+        const salesQuery = isSuperAdmin
+          ? query(collection(firestore, 'sales'), where('customerId', '==', customerId))
+          : query(collection(firestore, 'sales'), where('customerId', '==', customerId), where('tenantId', '==', tenantId));
         const salesSnap = await getDocs(salesQuery);
         const sales = salesSnap.docs.map(doc => doc.data() as Sale);
 
@@ -270,7 +285,9 @@ export default function AddPaymentPage() {
           // Fetch project details for each unique project ID
           for (const pId of projectIds) {
             const projectDoc = await getDocs(
-              query(collection(firestore, 'projects'), where('id', '==', pId), where('tenantId', '==', tenantId))
+              isSuperAdmin
+                ? query(collection(firestore, 'projects'), where('id', '==', pId))
+                : query(collection(firestore, 'projects'), where('id', '==', pId), where('tenantId', '==', tenantId))
             );
             projectDoc.forEach(doc => projectsData.push(doc.data() as Project));
           }
@@ -279,7 +296,7 @@ export default function AddPaymentPage() {
       }
     }
     fetchCustomerData();
-  }, [customerId, firestore, form, tenantId]);
+  }, [customerId, firestore, form, tenantId, isSuperAdmin]);
 
   useEffect(() => {
     async function fetchProjectData() {

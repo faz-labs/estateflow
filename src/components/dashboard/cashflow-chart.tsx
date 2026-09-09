@@ -4,7 +4,7 @@ import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } fro
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { ChartTooltipContent, ChartContainer } from "@/components/ui/chart"
 import { useFirestore } from "@/firebase"
-import { collectionGroup, getDocs, query, where } from "firebase/firestore"
+import { collection, collectionGroup, getDocs, query, where } from "firebase/firestore"
 import { useEffect, useState } from "react"
 import { format, subMonths } from "date-fns"
 import type { InflowTransaction, OutflowTransaction } from "@/lib/types"
@@ -22,18 +22,25 @@ const chartConfig = {
 }
 
 export function CashflowChart() {
-  const { formatCompactCurrency, tenantId } = useUserProfile();
+  const { formatCompactCurrency, tenantId, isSuperAdmin } = useUserProfile();
   const firestore = useFirestore();
   const [chartData, setChartData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!firestore || !tenantId) return;
+    if (!firestore || (!tenantId && !isSuperAdmin)) return;
     const fetchChartData = async () => {
       setIsLoading(true);
       try {
-        const inflowsQuery = query(collectionGroup(firestore, 'inflowTransactions'), where('tenantId', '==', tenantId));
-        const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'), where('tenantId', '==', tenantId));
+        const projectsSnap = await getDocs(
+          isSuperAdmin
+            ? collection(firestore, 'projects')
+            : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))
+        );
+        const tenantProjectIds = new Set(projectsSnap.docs.map(d => d.id));
+
+        const inflowsQuery = query(collectionGroup(firestore, 'inflowTransactions'));
+        const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'));
 
         const [inflowSnap, outflowSnap] = await Promise.all([
           getDocs(inflowsQuery),
@@ -48,6 +55,8 @@ export function CashflowChart() {
 
         inflowSnap.forEach(doc => {
             const data = doc.data() as InflowTransaction;
+            const belongs = isSuperAdmin || (data.tenantId ? data.tenantId === tenantId : (data.projectId ? tenantProjectIds.has(data.projectId) : false));
+            if (!belongs) return;
             const month = format(new Date(data.date), 'MMM');
             if (monthlyData[month]) {
                 monthlyData[month].inflow += data.amount;
@@ -56,6 +65,8 @@ export function CashflowChart() {
 
         outflowSnap.forEach(doc => {
             const data = doc.data() as OutflowTransaction;
+            const belongs = isSuperAdmin || (data.tenantId ? data.tenantId === tenantId : (data.projectId ? tenantProjectIds.has(data.projectId) : false));
+            if (!belongs) return;
             const month = format(new Date(data.date), 'MMM');
             if (monthlyData[month]) {
                 monthlyData[month].outflow += data.amount;
@@ -76,7 +87,7 @@ export function CashflowChart() {
     };
 
     fetchChartData();
-  }, [firestore]);
+  }, [firestore, tenantId, isSuperAdmin]);
 
 
   return (

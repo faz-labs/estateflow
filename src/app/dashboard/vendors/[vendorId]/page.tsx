@@ -101,7 +101,7 @@ export default function VendorDetailPage({
 }: {
   params: Promise<{ vendorId: string }>;
 }) {
-  const { tenantId, formatCompactCurrency } = useUserProfile();
+  const { tenantId, isSuperAdmin, formatCompactCurrency } = useUserProfile();
   const firestore = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
@@ -126,17 +126,22 @@ export default function VendorDetailPage({
   const [isDeletePaymentAlertOpen, setIsDeletePaymentAlertOpen] = useState(false);
 
   useEffect(() => {
-    if (!vendorId || !firestore || !isDataDirty || !tenantId) return;
+    if (!vendorId || !firestore || !isDataDirty || (!tenantId && !isSuperAdmin)) return;
 
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        // Fetch all required data concurrently scoped to tenant
+        // Fetch all required data concurrently
         const vendorRef = doc(firestore, 'vendors', vendorId);
-        const projectsQuery = query(collection(firestore, 'projects'), where('tenantId', '==', tenantId));
-        const itemsQuery = query(collection(firestore, 'expenseItems'), where('tenantId', '==', tenantId));
-        const allOutflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'), where('tenantId', '==', tenantId));
+        const projectsQuery = isSuperAdmin
+          ? query(collection(firestore, 'projects'))
+          : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId));
+        const itemsQuery = isSuperAdmin
+          ? query(collection(firestore, 'expenseItems'))
+          : query(collection(firestore, 'expenseItems'), where('tenantId', '==', tenantId));
+        // Unindexed collectionGroup query to avoid Firestore index exemption requirement
+        const allOutflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'), limit(150));
         
         const [vendorSnap, projectsSnap, itemsSnap, allOutflowsSnap] = await Promise.all([
             getDoc(vendorRef),
@@ -151,20 +156,19 @@ export default function VendorDetailPage({
         }
 
         const vendorData = vendorSnap.data() as Vendor;
-        if (vendorData.tenantId && vendorData.tenantId !== tenantId) {
+        if (!isSuperAdmin && vendorData.tenantId && vendorData.tenantId !== tenantId) {
           notFound();
           return;
         }
 
         const projectsMap = new Map(projectsSnap.docs.map(d => [d.id, d.data() as Project]));
         const itemsMap = new Map(itemsSnap.docs.map(d => [d.id, d.data() as ExpenseItem]));
+        const tenantProjectIds = new Set(projectsSnap.docs.map(d => d.id));
 
         // Fetch expenses for this vendor
-        const expensesQuery = query(
-          collection(firestore, 'expenses'),
-          where('vendorId', '==', vendorId),
-          where('tenantId', '==', tenantId)
-        );
+        const expensesQuery = isSuperAdmin
+          ? query(collection(firestore, 'expenses'), where('vendorId', '==', vendorId))
+          : query(collection(firestore, 'expenses'), where('vendorId', '==', vendorId), where('tenantId', '==', tenantId));
         const expensesSnap = await getDocs(expensesQuery);
         const vendorExpenses = expensesSnap.docs.map(d => ({ ...d.data(), id: d.id } as Expense));
         
@@ -175,10 +179,13 @@ export default function VendorDetailPage({
             itemName: itemsMap.get(exp.itemId)?.name || 'N/A',
         })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-        // Filter all outflows for the current vendor on the client
+        // Filter outflows strictly for this vendor and tenant
         const vendorPayments = allOutflowsSnap.docs
             .map(d => ({ ...d.data(), id: d.id } as OutflowTransaction))
-            .filter(o => o.supplierVendor === vendorData.vendorName);
+            .filter(o => {
+              const belongsToTenant = isSuperAdmin || (o.tenantId ? o.tenantId === tenantId : (o.projectId ? tenantProjectIds.has(o.projectId) : true));
+              return belongsToTenant && o.supplierVendor === vendorData.vendorName;
+            });
 
         const enrichedPayments = vendorPayments.map(p => ({
             ...p,
@@ -208,7 +215,7 @@ export default function VendorDetailPage({
     };
 
     fetchData();
-  }, [vendorId, firestore, isDataDirty, tenantId]);
+  }, [vendorId, firestore, isDataDirty, tenantId, isSuperAdmin]);
   
   const filteredExpenses = useMemo(() => {
     if (!details) return [];

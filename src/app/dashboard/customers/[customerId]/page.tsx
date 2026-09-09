@@ -101,7 +101,7 @@ export default function CustomerDetailPage({
 }: {
   params: Promise<{ customerId: string }>;
 }) {
-  const { tenantId, formatCompactCurrency } = useUserProfile();
+  const { tenantId, isSuperAdmin, formatCompactCurrency } = useUserProfile();
   const firestore = useFirestore();
   const router = useRouter();
   const { customerId } = use(params);
@@ -121,7 +121,7 @@ export default function CustomerDetailPage({
   const [isDataDirty, setIsDataDirty] = useState(true);
 
   useEffect(() => {
-    if (!customerId || !firestore || !isDataDirty || !tenantId) return;
+    if (!customerId || !firestore || !isDataDirty || (!tenantId && !isSuperAdmin)) return;
 
     const fetchData = async () => {
       setIsLoading(true);
@@ -129,11 +129,13 @@ export default function CustomerDetailPage({
       try {
         // 1. Fetch customer and their sales records concurrently scoped to tenant
         const customerRef = doc(firestore, 'customers', customerId);
-        const salesQuery = query(
-          collection(firestore, 'sales'),
-          where('customerId', '==', customerId),
-          where('tenantId', '==', tenantId)
-        );
+        const salesQuery = isSuperAdmin
+          ? query(collection(firestore, 'sales'), where('customerId', '==', customerId))
+          : query(
+              collection(firestore, 'sales'),
+              where('customerId', '==', customerId),
+              where('tenantId', '==', tenantId)
+            );
 
         const [customerSnap, salesSnap] = await Promise.all([
           getDoc(customerRef),
@@ -146,7 +148,7 @@ export default function CustomerDetailPage({
         }
 
         const customerData = customerSnap.data() as Customer;
-        if (customerData.tenantId && customerData.tenantId !== tenantId) {
+        if (!isSuperAdmin && customerData.tenantId && customerData.tenantId !== tenantId) {
           notFound();
           return;
         }
@@ -219,7 +221,7 @@ export default function CustomerDetailPage({
     };
 
     fetchData();
-  }, [customerId, firestore, isDataDirty, tenantId]);
+  }, [customerId, firestore, isDataDirty, tenantId, isSuperAdmin]);
 
   // Derived state for filtered and paginated payments
   const filteredPayments = useMemo(() => {

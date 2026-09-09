@@ -16,7 +16,7 @@ import { Download } from 'lucide-react';
 import { isDateWithinRange, formatDateForDisplay } from '@/lib/date-utils';
 
 export function VendorPaymentReport() {
-  const { tenantId } = useUserProfile();
+  const { tenantId, isSuperAdmin } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -25,28 +25,31 @@ export function VendorPaymentReport() {
   const [isLoading, setIsLoading] = useState(false);
 
   const vendorsQuery = useMemoFirebase(
-    () => (!firestore || !tenantId ? null : query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId))),
-    [firestore, tenantId]
+    () => (!firestore || (!tenantId && !isSuperAdmin) ? null : isSuperAdmin ? collection(firestore, 'vendors') : query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId, isSuperAdmin]
   );
   const { data: vendors, isLoading: vendorsLoading } = useCollection<Vendor>(vendorsQuery);
 
   const projectsQuery = useMemoFirebase(
-    () => (!firestore || !tenantId ? null : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
-    [firestore, tenantId]
+    () => (!firestore || (!tenantId && !isSuperAdmin) ? null : isSuperAdmin ? collection(firestore, 'projects') : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId, isSuperAdmin]
   );
   const { data: projects, isLoading: projectsLoading } = useCollection<Project>(projectsQuery);
 
   const handleExport = async () => {
-    if (!firestore || !tenantId) return;
+    if (!firestore || (!tenantId && !isSuperAdmin)) return;
     setIsLoading(true);
     try {
-      const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'), where('tenantId', '==', tenantId));
+      const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'));
+      const projectsQuery = isSuperAdmin ? collection(firestore, 'projects') : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId));
       const [outflowsSnap, projectsSnap] = await Promise.all([
         getDocs(outflowsQuery),
-        getDocs(query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
+        getDocs(projectsQuery),
       ]);
 
-      const outflows = outflowsSnap.docs.map(doc => doc.data() as OutflowTransaction);
+      const tenantProjectIds = new Set(projectsSnap.docs.map(d => d.id));
+      const allOutflows = outflowsSnap.docs.map(doc => doc.data() as OutflowTransaction);
+      const outflows = allOutflows.filter(t => isSuperAdmin || (t.tenantId ? t.tenantId === tenantId : (t.projectId ? tenantProjectIds.has(t.projectId) : true)));
       const projectsMap = new Map(projectsSnap.docs.map(d => [d.id, d.data().projectName]));
 
       // Filter
