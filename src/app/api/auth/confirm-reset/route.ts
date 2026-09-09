@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAdminAuth, getAdminFirestore, verifySecureResetToken } from '@/lib/firebase-admin';
+import { getAdminFirestore, verifySecureResetToken, updateUserPasswordDirectly } from '@/lib/firebase-admin';
 
 /**
  * Confirms password reset token (stateless signed HMAC or stored token)
@@ -102,36 +102,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // 5. Update user password in Firebase Authentication via Admin SDK
-    const adminAuth = getAdminAuth();
-    if (adminAuth) {
-      try {
-        const userRecord = await adminAuth.getUserByEmail(email);
-        await adminAuth.updateUser(userRecord.uid, {
-          password: newPassword,
-        });
-
-        // Clear mustChangePassword if set
-        if (adminFirestore) {
-          try {
-            await adminFirestore.collection('users').doc(userRecord.uid).set(
-              { mustChangePassword: false },
-              { merge: true }
-            );
-          } catch {}
-        }
-      } catch (authErr: any) {
-        console.error('Failed to update password via Firebase Admin:', authErr);
-        return NextResponse.json(
-          { error: authErr.message || 'Could not update password. Please ensure it meets requirements and try again.' },
-          { status: 500 }
-        );
-      }
-    } else {
+    // 5. Update user password directly via Google Identity Toolkit REST API
+    try {
+      await updateUserPasswordDirectly(email, newPassword);
+    } catch (authErr: any) {
+      console.error('Failed to update password via Google Identity Toolkit:', authErr);
       return NextResponse.json(
-        { 
-          error: 'Authentication update service is temporarily unavailable. Please verify FIREBASE_SERVICE_ACCOUNT_KEY.',
-        },
+        { error: authErr.message || 'Could not update password. Please ensure it meets requirements and try again.' },
         { status: 500 }
       );
     }
