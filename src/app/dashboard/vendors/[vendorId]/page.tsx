@@ -50,6 +50,7 @@ import {
   Pencil,
   Trash2,
   Eye,
+  Loader2,
 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -103,7 +104,7 @@ export default function VendorDetailPage({
 }: {
   params?: Promise<{ vendorId: string }>;
 }) {
-  const { tenantId, isSuperAdmin, formatCompactCurrency } = useUserProfile();
+  const { tenantId, isSuperAdmin, isLoading: isProfileLoading, formatCompactCurrency } = useUserProfile();
   const firestore = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
@@ -128,9 +129,17 @@ export default function VendorDetailPage({
   const [isDeleteExpenseAlertOpen, setIsDeleteExpenseAlertOpen] = useState(false);
   const [isDeletePaymentAlertOpen, setIsDeletePaymentAlertOpen] = useState(false);
 
+  // Automatically reset data fetch when vendorId or tenantId changes
   useEffect(() => {
-    if (!vendorId || !firestore || !isDataDirty) return;
+    setIsDataDirty(true);
+  }, [vendorId, tenantId]);
+
+  useEffect(() => {
+    if (!vendorId || !firestore) return;
+    // Wait until user profile is fully resolved to avoid race conditions with tenantId
+    if (isProfileLoading) return;
     if (!tenantId && !isSuperAdmin) return;
+    if (!isDataDirty) return;
 
     const fetchData = async () => {
       setIsLoading(true);
@@ -160,7 +169,16 @@ export default function VendorDetailPage({
         }
 
         const vendorData = vendorSnap.data() as Vendor;
-        if (!isSuperAdmin && vendorData.tenantId && vendorData.tenantId !== tenantId) {
+        
+        // Defensive organization mismatch check
+        const isMismatch = 
+          !isSuperAdmin &&
+          tenantId !== 'all_tenants' &&
+          tenantId !== 'platform_root' &&
+          Boolean(vendorData.tenantId) &&
+          vendorData.tenantId !== tenantId;
+
+        if (isMismatch) {
           setError('Access Denied: Vendor belongs to another organization.');
           return;
         }
@@ -197,8 +215,8 @@ export default function VendorDetailPage({
         })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         
         // Calculate financials
-        const totalBilled = vendorExpenses.reduce((sum, e) => sum + e.price, 0);
-        const totalPaid = vendorPayments.reduce((sum, p) => sum + p.amount, 0);
+        const totalBilled = vendorExpenses.reduce((sum, e) => sum + (e.price || 0), 0);
+        const totalPaid = vendorPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
         setDetails({
           vendor: vendorData,
@@ -219,7 +237,7 @@ export default function VendorDetailPage({
     };
 
     fetchData();
-  }, [vendorId, firestore, isDataDirty, tenantId, isSuperAdmin]);
+  }, [vendorId, firestore, isDataDirty, tenantId, isSuperAdmin, isProfileLoading]);
   
   const filteredExpenses = useMemo(() => {
     if (!details) return [];
@@ -351,12 +369,13 @@ export default function VendorDetailPage({
     return formatCompactCurrency(value);
   };
 
-  if (isLoading) {
+  if (isProfileLoading || (isLoading && !error)) {
     return (
       <div className="flex justify-center items-center h-screen">
-        <div className="text-center">
-            <p className="text-lg">Loading vendor details...</p>
-            <p className="text-sm text-muted-foreground">Please wait a moment.</p>
+        <div className="text-center space-y-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+          <p className="text-lg font-medium">Loading vendor details...</p>
+          <p className="text-sm text-muted-foreground">Please wait a moment.</p>
         </div>
       </div>
     );
@@ -364,10 +383,35 @@ export default function VendorDetailPage({
 
   if (error) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <div className="text-center p-8 border-2 border-dashed border-destructive rounded-lg">
-             <h2 className="text-xl font-semibold text-destructive">{error}</h2>
-             <p className="text-muted-foreground">There was a problem fetching the data from the server.</p>
+      <div className="space-y-6 container mx-auto py-6">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => router.push('/dashboard/vendors')}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="sr-only">Back</span>
+          </Button>
+          <h1 className="text-xl font-semibold tracking-tight">Vendor Profile</h1>
+        </div>
+        <div className="text-center p-8 border-2 border-dashed border-destructive rounded-lg space-y-4 max-w-lg mx-auto">
+          <h2 className="text-xl font-semibold text-destructive">{error}</h2>
+          <p className="text-muted-foreground">
+            {error.includes('Access Denied')
+              ? 'This vendor belongs to a different workspace organization and cannot be accessed from your account.'
+              : 'There was a problem fetching the vendor data from the server.'}
+          </p>
+          <div className="flex justify-center gap-3">
+            <Button variant="outline" onClick={() => router.push('/dashboard/vendors')}>
+              Back to Vendors
+            </Button>
+            {!error.includes('Access Denied') && (
+              <Button onClick={() => { setError(null); setIsDataDirty(true); }}>
+                Retry
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     );

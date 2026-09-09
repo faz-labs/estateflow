@@ -48,6 +48,7 @@ import {
   FileDown,
   Printer,
   Save,
+  Loader2,
 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -101,7 +102,7 @@ export default function CustomerDetailPage({
 }: {
   params?: Promise<{ customerId: string }>;
 }) {
-  const { tenantId, isSuperAdmin, formatCompactCurrency } = useUserProfile();
+  const { tenantId, isSuperAdmin, isLoading: isProfileLoading, formatCompactCurrency } = useUserProfile();
   const firestore = useFirestore();
   const router = useRouter();
   const routeParams = useParams();
@@ -121,9 +122,17 @@ export default function CustomerDetailPage({
   const [selectedPaymentForView, setSelectedPaymentForView] = useState<{payment: EnrichedTransaction, customer: Customer, project: Project} | null>(null);
   const [isDataDirty, setIsDataDirty] = useState(true);
 
+  // Automatically reset data fetch when customerId or tenantId changes
   useEffect(() => {
-    if (!customerId || !firestore || !isDataDirty) return;
+    setIsDataDirty(true);
+  }, [customerId, tenantId]);
+
+  useEffect(() => {
+    if (!customerId || !firestore) return;
+    // Wait until user profile is fully resolved to avoid race conditions with tenantId
+    if (isProfileLoading) return;
     if (!tenantId && !isSuperAdmin) return;
+    if (!isDataDirty) return;
 
     const fetchData = async () => {
       setIsLoading(true);
@@ -147,7 +156,16 @@ export default function CustomerDetailPage({
         }
 
         const customerData = customerSnap.data() as Customer;
-        if (!isSuperAdmin && customerData.tenantId && customerData.tenantId !== tenantId) {
+        
+        // Defensive organization mismatch check
+        const isMismatch = 
+          !isSuperAdmin &&
+          tenantId !== 'all_tenants' &&
+          tenantId !== 'platform_root' &&
+          Boolean(customerData.tenantId) &&
+          customerData.tenantId !== tenantId;
+
+        if (isMismatch) {
           setError('Access Denied: Customer belongs to another organization.');
           return;
         }
@@ -157,39 +175,59 @@ export default function CustomerDetailPage({
           .filter(s => isSuperAdmin || !s.tenantId || s.tenantId === tenantId);
         
         // 2. Get unique project IDs from sales to query for payments
-        const projectIds = [...new Set(salesData.map(s => s.projectId))];
+        const projectIds = [...new Set(salesData.map(s => s.projectId).filter(Boolean))];
         const allPayments: InflowTransaction[] = [];
 
         // Fetch payments from each project's subcollection
         for (const projectId of projectIds) {
-          const paymentsQuery = query(
-            collection(firestore, `projects/${projectId}/inflowTransactions`),
-            where('customerId', '==', customerId)
-          );
-          const paymentsSnap = await getDocs(paymentsQuery);
-          paymentsSnap.forEach(doc => {
-            allPayments.push({ ...doc.data(), id: doc.id } as InflowTransaction);
-          });
+          try {
+            const paymentsQuery = query(
+              collection(firestore, `projects/${projectId}/inflowTransactions`),
+              where('customerId', '==', customerId)
+            );
+            const paymentsSnap = await getDocs(paymentsQuery);
+            paymentsSnap.forEach(doc => {
+              allPayments.push({ ...doc.data(), id: doc.id } as InflowTransaction);
+            });
+          } catch (pErr) {
+            console.warn(`Could not load payments for project ${projectId}:`, pErr);
+          }
         }
         
         allPayments.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-
-        // 3. Enrich sales with project and flat info
+        // 3. Enrich sales with project and flat info safely
         const enrichedSales: EnrichedSale[] = [];
         for (const sale of salesData) {
-          const projectRef = doc(firestore, 'projects', sale.projectId);
-          const flatRef = doc(firestore, 'projects', sale.projectId, 'flats', sale.flatId);
-            
-          const [projectSnap, flatSnap] = await Promise.all([
-            getDoc(projectRef),
-            getDoc(flatRef),
-          ]);
+          let projectName = 'N/A';
+          let flatNumber = 'N/A';
+
+          if (sale.projectId) {
+            try {
+              const projectSnap = await getDoc(doc(firestore, 'projects', sale.projectId));
+              if (projectSnap.exists()) {
+                projectName = (projectSnap.data() as Project).projectName || 'N/A';
+              }
+            } catch (e) {
+              console.warn('Could not fetch project:', e);
+            }
+          }
+
+          if (sale.projectId && sale.flatId) {
+            try {
+              const flatSnap = await getDoc(doc(firestore, 'projects', sale.projectId, 'flats', sale.flatId));
+              if (flatSnap.exists()) {
+                flatNumber = (flatSnap.data() as Flat).flatNumber || 'N/A';
+              }
+            } catch (e) {
+              console.warn('Could not fetch flat:', e);
+            }
+          }
 
           enrichedSales.push({
             ...sale,
-            projectName: projectSnap.exists() ? (projectSnap.data() as Project).projectName : 'N/A',
-            flatNumber: flatSnap.exists() ? (flatSnap.data() as Flat).flatNumber : 'N/A',
+            projectName,
+            flatNumber,
           });
         }
         
@@ -198,7 +236,7 @@ export default function CustomerDetailPage({
             const basePrice = s.totalPrice || 0;
             return sum + basePrice;
         }, 0);
-        const totalPaid = allPayments.reduce((sum, p) => sum + p.amount, 0);
+        const totalPaid = allPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
         const totalDue = totalPrice - totalPaid;
 
         setDetails({
@@ -220,7 +258,7 @@ export default function CustomerDetailPage({
     };
 
     fetchData();
-  }, [customerId, firestore, isDataDirty, tenantId, isSuperAdmin]);
+  }, [customerId, firestore, isDataDirty, tenantId, isSuperAdmin, isProfileLoading]);
 
   // Derived state for filtered and paginated payments
   const filteredPayments = useMemo(() => {
@@ -333,12 +371,13 @@ export default function CustomerDetailPage({
     return formatCompactCurrency(value);
   };
 
-  if (isLoading) {
+  if (isProfileLoading || (isLoading && !error)) {
     return (
       <div className="flex justify-center items-center h-screen">
-        <div className="text-center">
-            <p className="text-lg">Loading customer details...</p>
-            <p className="text-sm text-muted-foreground">Please wait a moment.</p>
+        <div className="text-center space-y-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+          <p className="text-lg font-medium">Loading customer details...</p>
+          <p className="text-sm text-muted-foreground">Please wait a moment.</p>
         </div>
       </div>
     );
@@ -346,10 +385,35 @@ export default function CustomerDetailPage({
 
   if (error) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <div className="text-center p-8 border-2 border-dashed border-destructive rounded-lg">
-             <h2 className="text-xl font-semibold text-destructive">{error}</h2>
-             <p className="text-muted-foreground">There was a problem fetching the data from the server.</p>
+      <div className="space-y-6 container mx-auto py-6">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => router.push('/dashboard/customers')}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="sr-only">Back</span>
+          </Button>
+          <h1 className="text-xl font-semibold tracking-tight">Customer Profile</h1>
+        </div>
+        <div className="text-center p-8 border-2 border-dashed border-destructive rounded-lg space-y-4 max-w-lg mx-auto">
+          <h2 className="text-xl font-semibold text-destructive">{error}</h2>
+          <p className="text-muted-foreground">
+            {error.includes('Access Denied')
+              ? 'This customer belongs to a different workspace organization and cannot be accessed from your account.'
+              : 'There was a problem fetching the customer data from the server.'}
+          </p>
+          <div className="flex justify-center gap-3">
+            <Button variant="outline" onClick={() => router.push('/dashboard/customers')}>
+              Back to Customers
+            </Button>
+            {!error.includes('Access Denied') && (
+              <Button onClick={() => { setError(null); setIsDataDirty(true); }}>
+                Retry
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     );

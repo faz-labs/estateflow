@@ -125,8 +125,9 @@ export function useUserProfile(): UserProfileState {
   const role: 'SuperAdmin' | 'Admin' | 'Accountant' | 'Viewer' = isSuper 
     ? 'SuperAdmin' 
     : (profile?.role || 'Viewer');
-  const tenantId: string = profile?.tenantId || (isSuper ? 'all_tenants' : 'default_workspace');
-  const companyName: string = profile?.companyName || (isSuper ? 'Platform SuperAdmin' : 'Default Workspace');
+  const isProfileLoading = isAuthLoading || isLoading;
+  const tenantId: string = profile?.tenantId || (isSuper ? 'all_tenants' : (isProfileLoading ? '' : 'default_workspace'));
+  const companyName: string = profile?.companyName || (isSuper ? 'Platform SuperAdmin' : (isProfileLoading ? '' : 'Default Workspace'));
 
   // Tenant Plan & Expiry Calculations
   const tenantPlan: SubscriptionPlan = tenant?.plan || 'pro';
