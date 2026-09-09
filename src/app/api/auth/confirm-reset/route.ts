@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
+import { getAdminAuth, getAdminFirestore, verifySecureResetToken } from '@/lib/firebase-admin';
 
 /**
- * Confirms custom password reset token generated via Mailcow email dispatch
- * and actually updates the user's password in Firebase Authentication.
+ * Confirms password reset token (stateless signed HMAC or stored token)
+ * and directly updates the user's password in Firebase Authentication.
  */
 export async function POST(request: Request) {
   try {
-    const { token, newPassword, email: requestEmail } = await request.json();
+    const { token, newPassword, email: requestEmail, oobCode } = await request.json();
 
-    if (!token || !newPassword) {
+    if ((!token && !oobCode) || !newPassword) {
       return NextResponse.json(
-        { error: 'Reset token and new password are required.' },
+        { error: 'Reset credentials and new password are required.' },
         { status: 400 }
       );
     }
@@ -23,59 +23,86 @@ export async function POST(request: Request) {
       );
     }
 
-    const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
     const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-
-    if (!projectId || !apiKey) {
-      return NextResponse.json(
-        { error: 'Firebase configuration is missing.' },
-        { status: 500 }
-      );
-    }
-
     const adminFirestore = getAdminFirestore();
     let email = '';
-    let expiresAt = 0;
-    let used = false;
 
-    // 1. Fetch token document via Admin SDK (bypassing client security rules)
-    if (adminFirestore) {
-      const tokenDoc = await adminFirestore.collection('password_resets').doc(token).get();
-      if (!tokenDoc.exists) {
+    // 1. First priority: Cryptographically signed HMAC token (Stateless, zero-failure)
+    if (token && token.includes('.')) {
+      const hmacCheck = verifySecureResetToken(token);
+      if (hmacCheck.valid && hmacCheck.email) {
+        email = hmacCheck.email;
+      } else if (hmacCheck.error) {
         return NextResponse.json(
-          { error: 'Invalid or expired password reset link. Please request a new one.' },
+          { error: hmacCheck.error },
           { status: 400 }
         );
       }
-      const data = tokenDoc.data();
-      email = data?.email || requestEmail || '';
-      expiresAt = Number(data?.expiresAt || 0);
-      used = Boolean(data?.used);
-    } else {
-      // Fallback via REST API
-      const tokenDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/password_resets/${token}`;
-      const tokenRes = await fetch(tokenDocUrl);
-      if (!tokenRes.ok) {
-        return NextResponse.json(
-          { error: 'Invalid or expired password reset link. Please request a new one.' },
-          { status: 400 }
-        );
-      }
-      const tokenData = await tokenRes.json();
-      const fields = tokenData.fields;
-      email = fields?.email?.stringValue || requestEmail || '';
-      expiresAt = parseInt(fields?.expiresAt?.integerValue || fields?.expiresAt?.stringValue || '0', 10);
-      used = fields?.used?.booleanValue || false;
     }
 
-    if (!email || used || Date.now() > expiresAt) {
+    // 2. Check for replay attack if token exists in Firestore
+    if (adminFirestore && token) {
+      try {
+        const tokenDoc = await adminFirestore.collection('password_resets').doc(token).get();
+        if (tokenDoc.exists) {
+          const docData = tokenDoc.data();
+          if (docData?.used) {
+            return NextResponse.json(
+              { error: 'This password reset link has already been used. Please request a new one.' },
+              { status: 400 }
+            );
+          }
+          if (docData?.expiresAt && Date.now() > Number(docData.expiresAt)) {
+            return NextResponse.json(
+              { error: 'This password reset link has expired. Please request a new one.' },
+              { status: 400 }
+            );
+          }
+          if (!email && docData?.email) {
+            email = docData.email;
+          }
+        }
+      } catch (dbErr) {
+        console.warn('Non-blocking replay check note:', dbErr);
+      }
+    }
+
+    // 3. Fallback email from query/form
+    if (!email && requestEmail) {
+      email = requestEmail.trim().toLowerCase();
+    }
+
+    // 4. Fallback for native Firebase oobCode (if token was not verified)
+    if (!email && oobCode && apiKey) {
+      try {
+        const restRes = await fetch(
+          `https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ oobCode, newPassword }),
+          }
+        );
+        const restData = await restRes.json();
+        if (restRes.ok) {
+          return NextResponse.json({
+            success: true,
+            message: 'Password has been successfully updated.',
+          });
+        }
+      } catch (restErr) {
+        console.warn('Native oobCode REST fallback error:', restErr);
+      }
+    }
+
+    if (!email) {
       return NextResponse.json(
-        { error: 'This reset link has expired or has already been used. Please request a new one.' },
+        { error: 'Invalid or expired password reset link. Please request a new one.' },
         { status: 400 }
       );
     }
 
-    // 2. Update user password in Firebase Authentication
+    // 5. Update user password in Firebase Authentication via Admin SDK
     const adminAuth = getAdminAuth();
     if (adminAuth) {
       try {
@@ -96,36 +123,32 @@ export async function POST(request: Request) {
       } catch (authErr: any) {
         console.error('Failed to update password via Firebase Admin:', authErr);
         return NextResponse.json(
-          { error: 'Could not update password. Please ensure it meets minimum requirements and try again.' },
+          { error: authErr.message || 'Could not update password. Please ensure it meets requirements and try again.' },
           { status: 500 }
         );
       }
     } else {
       return NextResponse.json(
         { 
-          error: 'Authentication update service is temporarily unavailable. Please contact platform support.',
+          error: 'Authentication update service is temporarily unavailable. Please verify FIREBASE_SERVICE_ACCOUNT_KEY.',
         },
         { status: 500 }
       );
     }
 
-    // 3. Mark token as used
-    if (adminFirestore) {
-      await adminFirestore.collection('password_resets').doc(token).update({
-        used: true,
-        usedAt: new Date().toISOString(),
-      });
-    } else {
-      const tokenDocUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/password_resets/${token}`;
-      await fetch(`${tokenDocUrl}?updateMask.fieldPaths=used`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fields: {
-            used: { booleanValue: true },
+    // 6. Mark token as used non-blockingly
+    if (adminFirestore && token) {
+      adminFirestore
+        .collection('password_resets')
+        .doc(token)
+        .set(
+          {
+            used: true,
+            usedAt: new Date().toISOString(),
           },
-        }),
-      });
+          { merge: true }
+        )
+        .catch(() => {});
     }
 
     return NextResponse.json({

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
-import { getAdminAuth, getAdminFirestore } from '@/lib/firebase-admin';
+import { getAdminAuth, getAdminFirestore, createSecureResetToken } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -39,7 +39,11 @@ export async function POST(request: Request) {
     const requestHost = request.headers.get('x-forwarded-host') || request.headers.get('host');
     const proto = request.headers.get('x-forwarded-proto') || 'https';
     const dynamicOrigin = requestHost ? `${proto}://${requestHost}` : 'http://localhost:9002';
-    const appUrl = cleanEnvStr(process.env.NEXT_PUBLIC_APP_URL) || dynamicOrigin;
+    let appUrl = cleanEnvStr(process.env.NEXT_PUBLIC_APP_URL);
+    // Ensure that if NEXT_PUBLIC_APP_URL was copied as localhost, production domains use dynamicOrigin
+    if (!appUrl || (appUrl.includes('localhost') && requestHost && !requestHost.includes('localhost'))) {
+      appUrl = dynamicOrigin;
+    }
     const projectId = cleanEnvStr(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID);
 
     // Verify SMTP settings are configured
@@ -60,25 +64,26 @@ export async function POST(request: Request) {
       );
     }
 
-    // Determine the branded reset URL:
-    // Option A: Try generating official Firebase oobCode via Admin SDK (suppresses Google's email!)
-    // 1. Always generate a secure server-managed token (valid for 1 hour)
-    const customToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = Date.now() + 1000 * 60 * 60; // 1 hour validity
+    // 1. Generate zero-failure cryptographically signed HMAC token (2 hour validity)
+    const customToken = createSecureResetToken(normalizedEmail);
+    const expiresAt = Date.now() + 1000 * 60 * 60 * 2;
 
+    // Optional non-blocking persistence in Firestore for audit & revocation
     const adminFirestore = getAdminFirestore();
     if (adminFirestore) {
-      try {
-        await adminFirestore.collection('password_resets').doc(customToken).set({
+      adminFirestore
+        .collection('password_resets')
+        .doc(customToken)
+        .set({
           token: customToken,
           email: normalizedEmail,
           expiresAt,
           used: false,
           createdAt: new Date().toISOString(),
+        })
+        .catch((fsErr) => {
+          console.warn('Non-blocking token persistence note:', fsErr?.message);
         });
-      } catch (fsErr) {
-        console.warn('Failed to store custom reset token in Admin Firestore:', fsErr);
-      }
     }
 
     // 2. Also attempt generating Google Firebase oobCode if available
@@ -99,9 +104,9 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3. Construct unified branded reset URL with both token and oobCode
+    // 3. Construct unified branded reset URL with both signed token and email
     const oobParam = oobCode ? `&oobCode=${encodeURIComponent(oobCode)}` : '';
-    const resetUrl = `${appUrl}/reset-password?token=${customToken}&email=${encodeURIComponent(normalizedEmail)}${oobParam}`;
+    const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(customToken)}&email=${encodeURIComponent(normalizedEmail)}${oobParam}`;
 
     // Initialize Mailcow SMTP transporter
     const transporter = nodemailer.createTransport({

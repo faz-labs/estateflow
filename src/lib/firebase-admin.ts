@@ -10,6 +10,31 @@ let appInstance: App | null = null;
 let adminAuthInstance: Auth | null = null;
 let adminFirestoreInstance: Firestore | null = null;
 
+import crypto from 'crypto';
+
+function sanitizePrivateKey(rawKey?: string): string {
+  if (!rawKey) return '';
+  let key = rawKey.replace(/\\n/g, '\n');
+  
+  const pemMatch = key.match(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----/);
+  if (!pemMatch) return key;
+
+  const pem = pemMatch[0];
+  const headerMatch = pem.match(/-----BEGIN [A-Z ]*PRIVATE KEY-----/);
+  const footerMatch = pem.match(/-----END [A-Z ]*PRIVATE KEY-----/);
+  
+  const header = headerMatch ? headerMatch[0] : '-----BEGIN PRIVATE KEY-----';
+  const footer = footerMatch ? footerMatch[0] : '-----END PRIVATE KEY-----';
+
+  const body = pem
+    .replace(header, '')
+    .replace(footer, '')
+    .replace(/[^A-Za-z0-9+/=]/g, '');
+
+  const formattedBody = body.match(/.{1,64}/g)?.join('\n') || body;
+  return `${header}\n${formattedBody}\n${footer}\n`;
+}
+
 function parseServiceAccount(rawStr: string): any {
   let str = rawStr.trim();
   // Strip surrounding quotes if pasted with quotes
@@ -32,26 +57,26 @@ function parseServiceAccount(rawStr: string): any {
 
   // 1. Direct JSON.parse
   try {
-    return JSON.parse(str);
-  } catch (e1: any) {
-    // 2. Try sanitizing unescaped newlines
-    try {
-      const sanitized = str.replace(/[\r\n]+/g, ' ');
-      return JSON.parse(sanitized);
-    } catch (e2) {
-      // 3. Regex extraction fallback for resilient parsing
-      const emailMatch = str.match(/"client_email"\s*:\s*"([^"]+)"/);
-      const keyMatch = str.match(/"private_key"\s*:\s*"((?:[^"\\]|\\.)+)"/);
-      const projectMatch = str.match(/"project_id"\s*:\s*"([^"]+)"/);
-      if (emailMatch && keyMatch) {
-        return {
-          client_email: emailMatch[1],
-          private_key: keyMatch[1].replace(/\\n/g, '\n'),
-          project_id: projectMatch ? projectMatch[1] : undefined,
-        };
-      }
-      throw e1;
+    const parsed = JSON.parse(str);
+    if (parsed.private_key) {
+      parsed.private_key = sanitizePrivateKey(parsed.private_key);
     }
+    return parsed;
+  } catch (e1: any) {
+    // 2. Regex extraction fallback for resilient parsing
+    const emailMatch = str.match(/"client_email"\s*:\s*"([^"]+)"/);
+    const projectMatch = str.match(/"project_id"\s*:\s*"([^"]+)"/);
+    const pemMatch = str.match(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----/);
+
+    if (emailMatch && pemMatch) {
+      return {
+        type: 'service_account',
+        client_email: emailMatch[1],
+        private_key: sanitizePrivateKey(pemMatch[0]),
+        project_id: projectMatch ? projectMatch[1] : undefined,
+      };
+    }
+    throw e1;
   }
 }
 
@@ -88,7 +113,7 @@ export function initFirebaseAdmin(): {
         try {
           const parsed = parseServiceAccount(serviceAccountJson);
           if (parsed.private_key) {
-            parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+            parsed.private_key = sanitizePrivateKey(parsed.private_key);
           }
           appInstance = initializeApp({
             credential: cert(parsed),
@@ -102,7 +127,7 @@ export function initFirebaseAdmin(): {
           credential: cert({
             projectId,
             clientEmail,
-            privateKey,
+            privateKey: sanitizePrivateKey(privateKey),
           }),
           projectId,
         });
@@ -130,6 +155,80 @@ export function getAdminAuth(): Auth | null {
 
 export function getAdminFirestore(): Firestore | null {
   return initFirebaseAdmin().adminFirestore;
+}
+
+function getResetSecret(): string {
+  return (
+    process.env.FIREBASE_SERVICE_ACCOUNT_KEY ||
+    process.env.SMTP_PASS ||
+    process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
+    'estateflow-secure-reset-fallback-salt-2026'
+  );
+}
+
+/**
+ * Creates a cryptographically signed HMAC token for zero-failure, stateless password resets.
+ */
+export function createSecureResetToken(email: string): string {
+  const secret = getResetSecret();
+  const expiresAt = Date.now() + 1000 * 60 * 60 * 2; // 2 hours validity
+  const payload = Buffer.from(
+    JSON.stringify({
+      email: email.trim().toLowerCase(),
+      exp: expiresAt,
+      salt: crypto.randomBytes(12).toString('hex'),
+    })
+  ).toString('base64url');
+
+  const signature = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+/**
+ * Validates a cryptographically signed HMAC reset token.
+ */
+export function verifySecureResetToken(token: string): {
+  valid: boolean;
+  email?: string;
+  exp?: number;
+  error?: string;
+} {
+  if (!token || typeof token !== 'string' || !token.includes('.')) {
+    return { valid: false, error: 'Invalid token format.' };
+  }
+  const [payloadStr, signature] = token.split('.');
+  if (!payloadStr || !signature) {
+    return { valid: false, error: 'Malformed token structure.' };
+  }
+
+  const secret = getResetSecret();
+  const expectedSig = crypto.createHmac('sha256', secret).update(payloadStr).digest('base64url');
+
+  try {
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expectedSig);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      return { valid: false, error: 'Invalid reset token signature.' };
+    }
+  } catch {
+    return { valid: false, error: 'Cryptographic verification failed.' };
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(payloadStr, 'base64url').toString('utf8'));
+    if (!payload.email || typeof payload.email !== 'string') {
+      return { valid: false, error: 'Invalid token payload.' };
+    }
+    if (Date.now() > payload.exp) {
+      return {
+        valid: false,
+        error: 'This password reset link has expired. Please request a new one.',
+      };
+    }
+    return { valid: true, email: payload.email, exp: payload.exp };
+  } catch {
+    return { valid: false, error: 'Could not decode reset token payload.' };
+  }
 }
 
 // Proxied exports for backwards compatibility

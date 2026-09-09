@@ -34,23 +34,28 @@ function ResetPasswordContent() {
   // Validate the code or token on mount
   useEffect(() => {
     async function validate() {
-      if (!oobCode && !token) {
-        setValidationError('Invalid or missing password reset link. Please request a new link.');
+      // 1. Immediately set email from URL if present
+      if (emailParam) {
+        setTargetEmail(emailParam);
+      }
+
+      // 2. Only show missing link error if completely empty of tokens/params
+      if (!oobCode && !token && !emailParam) {
+        setValidationError('Invalid or missing password reset link. Please request a new link from the sign-in page.');
         setIsValidating(false);
         return;
       }
 
-      // If we only have oobCode without a server token, test it with client SDK
-      if (oobCode && auth && !token) {
+      // 3. If oobCode is present without token, try non-blocking verification to display email
+      if (oobCode && auth && !token && !emailParam) {
         try {
           const verifiedEmail = await verifyPasswordResetCode(auth, oobCode);
-          setTargetEmail(verifiedEmail);
+          if (verifiedEmail) {
+            setTargetEmail(verifiedEmail);
+          }
         } catch (err: any) {
-          console.error('oobCode verification failed:', err);
-          setValidationError('This password reset link has expired or has already been used. Please request a new one.');
+          console.warn('Non-blocking client oobCode verification note:', err?.message);
         }
-      } else if (emailParam) {
-        setTargetEmail(emailParam);
       }
 
       setIsValidating(false);
@@ -80,31 +85,40 @@ function ResetPasswordContent() {
     setIsSubmitting(true);
 
     try {
-      if (token) {
-        // Preferred resilient flow: Server-managed token via Firebase Admin
-        const res = await fetch('/api/auth/confirm-reset', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            token,
-            newPassword,
-            email: targetEmail || emailParam,
-            oobCode,
-          }),
-        });
+      // Preferred resilient flow: Server-managed token via Firebase Admin
+      const res = await fetch('/api/auth/confirm-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: token || undefined,
+          newPassword,
+          email: targetEmail || emailParam || undefined,
+          oobCode: oobCode || undefined,
+        }),
+      });
 
-        const contentType = res.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) {
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        // Fallback: If server returned non-JSON, try client-side Firebase Auth reset
+        if (oobCode && auth) {
+          await confirmPasswordReset(auth, oobCode, newPassword);
+        } else {
           throw new Error(`Server returned an unexpected response (${res.status}).`);
         }
-
+      } else {
         const data = await res.json();
         if (!res.ok) {
-          throw new Error(data.error || 'Failed to reset password.');
+          // If server failed, try client-side reset fallback if oobCode is available
+          if (oobCode && auth) {
+            try {
+              await confirmPasswordReset(auth, oobCode, newPassword);
+            } catch {
+              throw new Error(data.error || 'Failed to reset password.');
+            }
+          } else {
+            throw new Error(data.error || 'Failed to reset password.');
+          }
         }
-      } else if (oobCode && auth) {
-        // Native Firebase Auth reset via oobCode
-        await confirmPasswordReset(auth, oobCode, newPassword);
       }
 
       setIsSuccess(true);
