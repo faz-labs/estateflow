@@ -61,14 +61,16 @@ const ITEMS_PER_PAGE = 15;
 export default function VendorsPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId } = useUserProfile();
+  const { tenantId, isSuperAdmin } = useUserProfile();
 
   const vendorsQuery = useMemoFirebase(
     () => {
-      if (!firestore || !tenantId) return null;
-      return query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId));
+      if (!firestore || (!tenantId && !isSuperAdmin)) return null;
+      return isSuperAdmin
+        ? collection(firestore, 'vendors')
+        : query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId));
     },
-    [firestore, tenantId]
+    [firestore, tenantId, isSuperAdmin]
   );
   const { data: vendors, isLoading } = useCollection<Vendor>(vendorsQuery);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -101,14 +103,14 @@ export default function VendorsPage() {
     if (!vendors) return [];
     const searchTerm = searchQuery.toLowerCase();
     return vendors
-      .filter(v => v.tenantId === tenantId)
+      .filter(v => isSuperAdmin || !v.tenantId || v.tenantId === tenantId)
       .filter(vendor =>
         vendor.vendorName.toLowerCase().includes(searchTerm) ||
         vendor.phoneNumber.toLowerCase().includes(searchTerm) ||
         vendor.enterpriseName.toLowerCase().includes(searchTerm) ||
         (vendor.details || '').toLowerCase().includes(searchTerm)
       );
-  }, [vendors, searchQuery, tenantId]);
+  }, [vendors, searchQuery, tenantId, isSuperAdmin]);
 
   const totalPages = Math.ceil(filteredVendors.length / ITEMS_PER_PAGE);
   const paginatedVendors = filteredVendors.slice(

@@ -51,7 +51,7 @@ import {
   Trash2,
   Eye,
 } from 'lucide-react';
-import { notFound, useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -72,10 +72,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { ExpenseDetails } from '@/components/dashboard/expenses/expense-details';
 import { EditExpenseForm } from '@/components/dashboard/expenses/edit-expense-form';
+import { EditOutflowForm } from '@/components/dashboard/payments/edit-outflow-form';
+import { OutflowDetails } from '@/components/dashboard/payments/outflow-details';
 import type { EnrichedExpense } from '@/app/dashboard/expense/page';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { formatDateForDisplay } from '@/lib/date-utils';
@@ -99,13 +101,14 @@ const ITEMS_PER_PAGE = 5;
 export default function VendorDetailPage({
   params,
 }: {
-  params: Promise<{ vendorId: string }>;
+  params?: Promise<{ vendorId: string }>;
 }) {
   const { tenantId, isSuperAdmin, formatCompactCurrency } = useUserProfile();
   const firestore = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
-  const { vendorId } = use(params);
+  const routeParams = useParams();
+  const vendorId = (routeParams?.vendorId as string) || '';
 
   const [details, setDetails] = useState<VendorDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -126,7 +129,8 @@ export default function VendorDetailPage({
   const [isDeletePaymentAlertOpen, setIsDeletePaymentAlertOpen] = useState(false);
 
   useEffect(() => {
-    if (!vendorId || !firestore || !isDataDirty || (!tenantId && !isSuperAdmin)) return;
+    if (!vendorId || !firestore || !isDataDirty) return;
+    if (!tenantId && !isSuperAdmin) return;
 
     const fetchData = async () => {
       setIsLoading(true);
@@ -151,13 +155,13 @@ export default function VendorDetailPage({
         ]);
 
         if (!vendorSnap.exists()) {
-          notFound();
+          setError('Vendor not found in database.');
           return;
         }
 
         const vendorData = vendorSnap.data() as Vendor;
         if (!isSuperAdmin && vendorData.tenantId && vendorData.tenantId !== tenantId) {
-          notFound();
+          setError('Access Denied: Vendor belongs to another organization.');
           return;
         }
 
@@ -166,11 +170,11 @@ export default function VendorDetailPage({
         const tenantProjectIds = new Set(projectsSnap.docs.map(d => d.id));
 
         // Fetch expenses for this vendor
-        const expensesQuery = isSuperAdmin
-          ? query(collection(firestore, 'expenses'), where('vendorId', '==', vendorId))
-          : query(collection(firestore, 'expenses'), where('vendorId', '==', vendorId), where('tenantId', '==', tenantId));
+        const expensesQuery = query(collection(firestore, 'expenses'), where('vendorId', '==', vendorId));
         const expensesSnap = await getDocs(expensesQuery);
-        const vendorExpenses = expensesSnap.docs.map(d => ({ ...d.data(), id: d.id } as Expense));
+        const vendorExpenses = expensesSnap.docs
+          .map(d => ({ ...d.data(), id: d.id } as Expense))
+          .filter(e => isSuperAdmin || !e.tenantId || e.tenantId === tenantId);
         
         const enrichedExpenses: EnrichedExpense[] = vendorExpenses.map(exp => ({
             ...exp,
@@ -207,7 +211,7 @@ export default function VendorDetailPage({
 
       } catch (e: any) {
         console.error('Failed to fetch vendor details:', e);
-        setError('Could not load vendor data. Please try again.');
+        setError(e?.message || 'Could not load vendor data. Please try again.');
       } finally {
         setIsLoading(false);
         setIsDataDirty(false);

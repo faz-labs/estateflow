@@ -61,14 +61,16 @@ const ITEMS_PER_PAGE = 15;
 export default function CustomersPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId } = useUserProfile();
+  const { tenantId, isSuperAdmin } = useUserProfile();
 
   const customersQuery = useMemoFirebase(
     () => {
-      if (!firestore || !tenantId) return null;
-      return query(collection(firestore, 'customers'), where('tenantId', '==', tenantId));
+      if (!firestore || (!tenantId && !isSuperAdmin)) return null;
+      return isSuperAdmin
+        ? collection(firestore, 'customers')
+        : query(collection(firestore, 'customers'), where('tenantId', '==', tenantId));
     },
-    [firestore, tenantId]
+    [firestore, tenantId, isSuperAdmin]
   );
   const { data: customers, isLoading } = useCollection<Customer>(customersQuery);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -101,14 +103,14 @@ export default function CustomersPage() {
     if (!customers) return [];
     const searchTerm = searchQuery.toLowerCase();
     return customers
-      .filter(c => c.tenantId === tenantId)
+      .filter(c => isSuperAdmin || !c.tenantId || c.tenantId === tenantId)
       .filter(customer =>
         customer.fullName.toLowerCase().includes(searchTerm) ||
         customer.mobile.toLowerCase().includes(searchTerm) ||
         customer.address.toLowerCase().includes(searchTerm) ||
         customer.nidNumber.toLowerCase().includes(searchTerm)
       );
-  }, [customers, searchQuery, tenantId]);
+  }, [customers, searchQuery, tenantId, isSuperAdmin]);
 
   const totalPages = Math.ceil(filteredCustomers.length / ITEMS_PER_PAGE);
   const paginatedCustomers = filteredCustomers.slice(

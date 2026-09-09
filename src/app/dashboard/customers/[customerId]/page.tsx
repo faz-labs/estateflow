@@ -49,7 +49,7 @@ import {
   Printer,
   Save,
 } from 'lucide-react';
-import { notFound, useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -99,12 +99,13 @@ const PAYMENTS_PER_PAGE = 10;
 export default function CustomerDetailPage({
   params,
 }: {
-  params: Promise<{ customerId: string }>;
+  params?: Promise<{ customerId: string }>;
 }) {
   const { tenantId, isSuperAdmin, formatCompactCurrency } = useUserProfile();
   const firestore = useFirestore();
   const router = useRouter();
-  const { customerId } = use(params);
+  const routeParams = useParams();
+  const customerId = (routeParams?.customerId as string) || '';
 
   const [details, setDetails] = useState<CustomerDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -121,21 +122,19 @@ export default function CustomerDetailPage({
   const [isDataDirty, setIsDataDirty] = useState(true);
 
   useEffect(() => {
-    if (!customerId || !firestore || !isDataDirty || (!tenantId && !isSuperAdmin)) return;
+    if (!customerId || !firestore || !isDataDirty) return;
+    if (!tenantId && !isSuperAdmin) return;
 
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        // 1. Fetch customer and their sales records concurrently scoped to tenant
+        // 1. Fetch customer and their sales records
         const customerRef = doc(firestore, 'customers', customerId);
-        const salesQuery = isSuperAdmin
-          ? query(collection(firestore, 'sales'), where('customerId', '==', customerId))
-          : query(
-              collection(firestore, 'sales'),
-              where('customerId', '==', customerId),
-              where('tenantId', '==', tenantId)
-            );
+        const salesQuery = query(
+          collection(firestore, 'sales'),
+          where('customerId', '==', customerId)
+        );
 
         const [customerSnap, salesSnap] = await Promise.all([
           getDoc(customerRef),
@@ -143,19 +142,19 @@ export default function CustomerDetailPage({
         ]);
 
         if (!customerSnap.exists()) {
-          notFound();
+          setError('Customer not found in database.');
           return;
         }
 
         const customerData = customerSnap.data() as Customer;
         if (!isSuperAdmin && customerData.tenantId && customerData.tenantId !== tenantId) {
-          notFound();
+          setError('Access Denied: Customer belongs to another organization.');
           return;
         }
 
-        const salesData = salesSnap.docs.map(
-          d => ({ ...d.data(), id: d.id } as Sale)
-        );
+        const salesData = salesSnap.docs
+          .map(d => ({ ...d.data(), id: d.id } as Sale))
+          .filter(s => isSuperAdmin || !s.tenantId || s.tenantId === tenantId);
         
         // 2. Get unique project IDs from sales to query for payments
         const projectIds = [...new Set(salesData.map(s => s.projectId))];
@@ -213,7 +212,7 @@ export default function CustomerDetailPage({
 
       } catch (e: any) {
         console.error('Failed to fetch customer details:', e);
-        setError('Could not load customer data. Please try again.');
+        setError(e?.message || 'Could not load customer data. Please try again.');
       } finally {
         setIsLoading(false);
         setIsDataDirty(false);
