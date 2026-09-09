@@ -17,7 +17,7 @@ import { useUserProfile } from "@/hooks/use-user-profile";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { formatCompactCurrency: formatCurrency, isSuperAdmin, isLoading: isProfileLoading } = useUserProfile();
+  const { formatCompactCurrency: formatCurrency, isSuperAdmin, tenantId, isLoading: isProfileLoading } = useUserProfile();
   const firestore = useFirestore();
 
   useEffect(() => {
@@ -38,21 +38,27 @@ export default function DashboardPage() {
   });
   const [isLoading, setIsLoading] = useState(true);
 
-  const projectsQuery = useMemoFirebase(() => collection(firestore, "projects"), [firestore]);
+  const projectsQuery = useMemoFirebase(
+    () => (firestore && tenantId ? query(collection(firestore, "projects"), where("tenantId", "==", tenantId)) : null),
+    [firestore, tenantId]
+  );
   const { data: projects } = useCollection<Project>(projectsQuery);
   
-  const operatingCostsQuery = useMemoFirebase(() => collection(firestore, "operatingCosts"), [firestore]);
+  const operatingCostsQuery = useMemoFirebase(
+    () => (firestore && tenantId ? query(collection(firestore, "operatingCosts"), where("tenantId", "==", tenantId)) : null),
+    [firestore, tenantId]
+  );
   const { data: operatingCosts } = useCollection<OperatingCost>(operatingCostsQuery);
 
   useEffect(() => {
-    if (isSuperAdmin) return;
+    if (isSuperAdmin || !tenantId || !firestore) return;
     const fetchStats = async () => {
       setIsLoading(true);
       try {
-        const salesQuery = query(collection(firestore, 'sales'));
-        const inflowsQuery = query(collectionGroup(firestore, 'inflowTransactions'));
-        const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'));
-        const expensesQuery = query(collection(firestore, 'expenses'));
+        const salesQuery = query(collection(firestore, 'sales'), where('tenantId', '==', tenantId));
+        const inflowsQuery = query(collectionGroup(firestore, 'inflowTransactions'), where('tenantId', '==', tenantId));
+        const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'), where('tenantId', '==', tenantId));
+        const expensesQuery = query(collection(firestore, 'expenses'), where('tenantId', '==', tenantId));
 
         const [salesSnap, inflowSnap, outflowSnap, expensesSnap] = await Promise.all([
           getDocs(salesQuery),
@@ -81,7 +87,7 @@ export default function DashboardPage() {
       setIsLoading(false);
     }
     fetchStats();
-  }, [firestore]);
+  }, [firestore, tenantId, isSuperAdmin]);
 
   useEffect(() => {
     if (operatingCosts) {

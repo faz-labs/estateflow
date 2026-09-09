@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Combobox } from '@/components/ui/combobox';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, getDocs } from 'firebase/firestore';
+import { collection, query, getDocs, where } from 'firebase/firestore';
+import { useUserProfile } from '@/hooks/use-user-profile';
 import type { Vendor, Expense, Project, ExpenseItem, ExpenseStatus } from '@/lib/types';
 import { exportToCsv } from '@/lib/csv';
 import { useToast } from '@/hooks/use-toast';
@@ -21,6 +22,7 @@ const statusOptions: { value: ExpenseStatus; label: string }[] = [
 ];
 
 export function ExpenseReport() {
+  const { tenantId } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -29,23 +31,30 @@ export function ExpenseReport() {
   const [selectedStatus, setSelectedStatus] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const vendorsQuery = useMemoFirebase(() => query(collection(firestore, 'vendors')), [firestore]);
+  const vendorsQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: vendors, isLoading: vendorsLoading } = useCollection<Vendor>(vendorsQuery);
 
-  const itemsQuery = useMemoFirebase(() => query(collection(firestore, 'expenseItems')), [firestore]);
+  const itemsQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'expenseItems'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: expenseItems, isLoading: itemsLoading } = useCollection<ExpenseItem>(itemsQuery);
 
   const handleExport = async () => {
+    if (!firestore || !tenantId) return;
     setIsLoading(true);
     try {
-      const expensesQuery = query(collection(firestore, 'expenses'));
-      const projectsQuery = query(collection(firestore, 'projects'));
+      const expensesQuery = query(collection(firestore, 'expenses'), where('tenantId', '==', tenantId));
+      const projectsQuery = query(collection(firestore, 'projects'), where('tenantId', '==', tenantId));
       
       const [expensesSnap, projectsSnap, vendorsSnap, itemsSnap] = await Promise.all([
         getDocs(expensesQuery),
         getDocs(projectsQuery),
-        getDocs(query(collection(firestore, 'vendors'))),
-        getDocs(query(collection(firestore, 'expenseItems'))),
+        getDocs(query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId))),
+        getDocs(query(collection(firestore, 'expenseItems'), where('tenantId', '==', tenantId))),
       ]);
 
       const expenses = expensesSnap.docs.map(doc => doc.data() as Expense);

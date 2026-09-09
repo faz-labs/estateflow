@@ -101,7 +101,7 @@ export default function VendorDetailPage({
 }: {
   params: Promise<{ vendorId: string }>;
 }) {
-  const { formatCompactCurrency } = useUserProfile();
+  const { tenantId, formatCompactCurrency } = useUserProfile();
   const firestore = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
@@ -126,17 +126,17 @@ export default function VendorDetailPage({
   const [isDeletePaymentAlertOpen, setIsDeletePaymentAlertOpen] = useState(false);
 
   useEffect(() => {
-    if (!vendorId || !firestore || !isDataDirty) return;
+    if (!vendorId || !firestore || !isDataDirty || !tenantId) return;
 
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        // Fetch all required data concurrently
+        // Fetch all required data concurrently scoped to tenant
         const vendorRef = doc(firestore, 'vendors', vendorId);
-        const projectsQuery = collection(firestore, 'projects');
-        const itemsQuery = collection(firestore, 'expenseItems');
-        const allOutflowsQuery = collectionGroup(firestore, 'outflowTransactions');
+        const projectsQuery = query(collection(firestore, 'projects'), where('tenantId', '==', tenantId));
+        const itemsQuery = query(collection(firestore, 'expenseItems'), where('tenantId', '==', tenantId));
+        const allOutflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'), where('tenantId', '==', tenantId));
         
         const [vendorSnap, projectsSnap, itemsSnap, allOutflowsSnap] = await Promise.all([
             getDoc(vendorRef),
@@ -151,13 +151,19 @@ export default function VendorDetailPage({
         }
 
         const vendorData = vendorSnap.data() as Vendor;
+        if (vendorData.tenantId && vendorData.tenantId !== tenantId) {
+          notFound();
+          return;
+        }
+
         const projectsMap = new Map(projectsSnap.docs.map(d => [d.id, d.data() as Project]));
         const itemsMap = new Map(itemsSnap.docs.map(d => [d.id, d.data() as ExpenseItem]));
 
         // Fetch expenses for this vendor
         const expensesQuery = query(
           collection(firestore, 'expenses'),
-          where('vendorId', '==', vendorId)
+          where('vendorId', '==', vendorId),
+          where('tenantId', '==', tenantId)
         );
         const expensesSnap = await getDocs(expensesQuery);
         const vendorExpenses = expensesSnap.docs.map(d => ({ ...d.data(), id: d.id } as Expense));
@@ -202,7 +208,7 @@ export default function VendorDetailPage({
     };
 
     fetchData();
-  }, [vendorId, firestore, isDataDirty]);
+  }, [vendorId, firestore, isDataDirty, tenantId]);
   
   const filteredExpenses = useMemo(() => {
     if (!details) return [];

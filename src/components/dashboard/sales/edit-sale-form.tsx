@@ -63,17 +63,23 @@ interface EditSaleFormProps {
 }
 
 export function EditSaleForm({ sale, setDialogOpen, onSaleUpdated }: EditSaleFormProps) {
-  const { currencySymbol, formatCurrency } = useUserProfile();
+  const { tenantId, currencySymbol, formatCurrency } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(sale.projectId);
 
   // Data fetching
-  const projectsQuery = useMemoFirebase(() => query(collection(firestore, 'projects')), [firestore]);
+  const projectsQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: projects, isLoading: projectsLoading } = useCollection<Project>(projectsQuery);
 
-  const customersQuery = useMemoFirebase(() => query(collection(firestore, 'customers')), [firestore]);
+  const customersQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'customers'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: customers, isLoading: customersLoading } = useCollection<Customer>(customersQuery);
 
   const availableFlatsQuery = useMemoFirebase(() =>

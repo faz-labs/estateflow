@@ -4,24 +4,27 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useFirestore } from '@/firebase';
-import { collection, query, getDocs, collectionGroup } from 'firebase/firestore';
+import { collection, query, getDocs, collectionGroup, where } from 'firebase/firestore';
+import { useUserProfile } from '@/hooks/use-user-profile';
 import type { Vendor, Expense, OutflowTransaction } from '@/lib/types';
 import { exportToCsv } from '@/lib/csv';
 import { useToast } from '@/hooks/use-toast';
 import { Download } from 'lucide-react';
 
 export function VendorReport() {
+  const { tenantId } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleExport = async () => {
+    if (!firestore || !tenantId) return;
     setIsLoading(true);
     try {
-      // 1. Fetch all necessary data
-      const vendorsQuery = query(collection(firestore, 'vendors'));
-      const expensesQuery = query(collection(firestore, 'expenses'));
-      const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'));
+      // 1. Fetch tenant-scoped data
+      const vendorsQuery = query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId));
+      const expensesQuery = query(collection(firestore, 'expenses'), where('tenantId', '==', tenantId));
+      const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'), where('tenantId', '==', tenantId));
 
       const [vendorsSnap, expensesSnap, outflowsSnap] = await Promise.all([
         getDocs(vendorsQuery),

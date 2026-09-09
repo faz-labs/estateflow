@@ -15,7 +15,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 import { useFirestore, useCollection, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
-import { collection, query, doc } from 'firebase/firestore';
+import { collection, query, doc, where } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import type { OperatingCost, OperatingCostItem } from '@/lib/types';
 import { Textarea } from '@/components/ui/textarea';
@@ -41,11 +41,14 @@ interface EditOperatingCostFormProps {
 }
 
 export function EditOperatingCostForm({ cost, setDialogOpen }: EditOperatingCostFormProps) {
-  const { currencySymbol } = useUserProfile();
+  const { tenantId, currencySymbol } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
 
-  const itemsQuery = useMemoFirebase(() => query(collection(firestore, 'operatingCostItems')), [firestore]);
+  const itemsQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'operatingCostItems'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: costItems, isLoading: itemsLoading } = useCollection<OperatingCostItem>(itemsQuery);
 
   const form = useForm<EditCostFormValues>({

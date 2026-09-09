@@ -22,11 +22,15 @@ import Link from "next/link"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { collection, limit, query, where } from "firebase/firestore"
 import type { Project } from "@/lib/types"
-
+import { useUserProfile } from "@/hooks/use-user-profile"
 
 export function ProjectStatus() {
   const firestore = useFirestore();
-  const projectsQuery = useMemoFirebase(() => query(collection(firestore, "projects"), limit(3)), [firestore]);
+  const { tenantId } = useUserProfile();
+  const projectsQuery = useMemoFirebase(
+    () => (firestore && tenantId ? query(collection(firestore, "projects"), where("tenantId", "==", tenantId), limit(3)) : null),
+    [firestore, tenantId]
+  );
   const { data: projects, isLoading } = useCollection<Project>(projectsQuery);
 
   return (

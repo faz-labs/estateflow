@@ -160,8 +160,8 @@ export default function AddPaymentPage() {
 
   // Data fetching for form dropdowns
   const customersQuery = useMemoFirebase(
-    () => query(collection(firestore, 'customers')),
-    [firestore]
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'customers'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
   );
   const { data: customers, isLoading: customersLoading } =
     useCollection<Customer>(customersQuery);
@@ -187,15 +187,16 @@ export default function AddPaymentPage() {
 
   // Fetch recent transactions for the log
   const fetchRecentTransactions = async () => {
+    if (!tenantId) return;
     setIsLogLoading(true);
     try {
-      // 1. Fetch all projects and customers to create lookup maps
-      const projectsSnap = await getDocs(collection(firestore, 'projects'));
-      const customersSnap = await getDocs(collection(firestore, 'customers'));
+      // 1. Fetch tenant-scoped projects and customers to create lookup maps
+      const projectsSnap = await getDocs(query(collection(firestore, 'projects'), where('tenantId', '==', tenantId)));
+      const customersSnap = await getDocs(query(collection(firestore, 'customers'), where('tenantId', '==', tenantId)));
       const projectsMap = new Map(projectsSnap.docs.map(d => [d.id, d.data() as Project]));
       const customersMap = new Map(customersSnap.docs.map(d => [d.id, d.data() as Customer]));
       
-      // Fetch all flats from all projects
+      // Fetch all flats from tenant's projects
       const allFlatsMap = new Map<string, Flat>();
         for (const project of projectsMap.values()) {
             const flatsQuery = query(collection(firestore, `projects/${project.id}/flats`));
@@ -205,10 +206,11 @@ export default function AddPaymentPage() {
             });
         }
 
-      // 2. Fetch last 10 inflow transactions
+      // 2. Fetch last 20 inflow transactions scoped to current tenant
       const inflowsQuery = query(
         collectionGroup(firestore, 'inflowTransactions'),
-        limit(10) // Fetch more to allow for filtering
+        where('tenantId', '==', tenantId),
+        limit(20)
       );
       const inflowSnap = await getDocs(inflowsQuery);
       const inflows = inflowSnap.docs.map(
@@ -236,10 +238,10 @@ export default function AddPaymentPage() {
 
   // Initial fetch for recent transactions
   useEffect(() => {
-    if (firestore) {
+    if (firestore && tenantId) {
       fetchRecentTransactions();
     }
-  }, [firestore, toast]);
+  }, [firestore, tenantId, toast]);
 
 
   useEffect(() => {
@@ -250,11 +252,12 @@ export default function AddPaymentPage() {
       form.setValue('projectId', '');
       form.setValue('flatId', '');
 
-      if (customerId && firestore) {
-        // Find all sales for the selected customer
+      if (customerId && firestore && tenantId) {
+        // Find all sales for the selected customer scoped to tenant
         const salesQuery = query(
           collection(firestore, 'sales'),
-          where('customerId', '==', customerId)
+          where('customerId', '==', customerId),
+          where('tenantId', '==', tenantId)
         );
         const salesSnap = await getDocs(salesQuery);
         const sales = salesSnap.docs.map(doc => doc.data() as Sale);
@@ -267,7 +270,7 @@ export default function AddPaymentPage() {
           // Fetch project details for each unique project ID
           for (const pId of projectIds) {
             const projectDoc = await getDocs(
-              query(collection(firestore, 'projects'), where('id', '==', pId))
+              query(collection(firestore, 'projects'), where('id', '==', pId), where('tenantId', '==', tenantId))
             );
             projectDoc.forEach(doc => projectsData.push(doc.data() as Project));
           }
@@ -276,7 +279,7 @@ export default function AddPaymentPage() {
       }
     }
     fetchCustomerData();
-  }, [customerId, firestore, form]);
+  }, [customerId, firestore, form, tenantId]);
 
   useEffect(() => {
     async function fetchProjectData() {
@@ -284,12 +287,13 @@ export default function AddPaymentPage() {
       setFlatsForProject([]);
       form.setValue('flatId', '');
 
-      if (customerId && projectId && firestore) {
-        // Find sales for the specific customer and project
+      if (customerId && projectId && firestore && tenantId) {
+        // Find sales for the specific customer and project scoped to tenant
         const salesQuery = query(
           collection(firestore, 'sales'),
           where('customerId', '==', customerId),
-          where('projectId', '==', projectId)
+          where('projectId', '==', projectId),
+          where('tenantId', '==', tenantId)
         );
         const salesSnap = await getDocs(salesQuery);
         const flatIds = salesSnap.docs.map(doc => (doc.data() as Sale).flatId);
@@ -315,7 +319,7 @@ export default function AddPaymentPage() {
       }
     }
     fetchProjectData();
-  }, [customerId, projectId, firestore, form]);
+  }, [customerId, projectId, firestore, form, tenantId]);
   
   const getNextReceiptId = async (): Promise<string> => {
     const counterRef = doc(firestore, 'counters', 'receipt');

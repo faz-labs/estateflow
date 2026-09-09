@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 import { useFirestore, useCollection, useMemoFirebase, addDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
-import { collection, query, doc } from 'firebase/firestore';
+import { collection, query, doc, where } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { getTodayDateString, formatDateForDisplay } from '@/lib/date-utils';
@@ -87,10 +87,16 @@ export default function OperatingCostPage() {
   const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false);
   
   // Data for forms and list
-  const itemsQuery = useMemoFirebase(() => query(collection(firestore, 'operatingCostItems')), [firestore]);
+  const itemsQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'operatingCostItems'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: costItems, isLoading: itemsLoading, error: itemsError } = useCollection<OperatingCostItem>(itemsQuery);
 
-  const costsQuery = useMemoFirebase(() => query(collection(firestore, 'operatingCosts')), [firestore]);
+  const costsQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'operatingCosts'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: operatingCosts, isLoading: costsLoading, error: costsError } = useCollection<OperatingCost>(costsQuery);
 
   // State for UI management

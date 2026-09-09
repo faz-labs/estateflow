@@ -4,7 +4,7 @@ import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } fro
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { ChartTooltipContent, ChartContainer } from "@/components/ui/chart"
 import { useFirestore } from "@/firebase"
-import { collectionGroup, getDocs, query } from "firebase/firestore"
+import { collectionGroup, getDocs, query, where } from "firebase/firestore"
 import { useEffect, useState } from "react"
 import { format, subMonths } from "date-fns"
 import type { InflowTransaction, OutflowTransaction } from "@/lib/types"
@@ -22,17 +22,18 @@ const chartConfig = {
 }
 
 export function CashflowChart() {
-  const { formatCompactCurrency } = useUserProfile();
+  const { formatCompactCurrency, tenantId } = useUserProfile();
   const firestore = useFirestore();
   const [chartData, setChartData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    if (!firestore || !tenantId) return;
     const fetchChartData = async () => {
       setIsLoading(true);
       try {
-        const inflowsQuery = query(collectionGroup(firestore, 'inflowTransactions'));
-        const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'));
+        const inflowsQuery = query(collectionGroup(firestore, 'inflowTransactions'), where('tenantId', '==', tenantId));
+        const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'), where('tenantId', '==', tenantId));
 
         const [inflowSnap, outflowSnap] = await Promise.all([
           getDocs(inflowsQuery),

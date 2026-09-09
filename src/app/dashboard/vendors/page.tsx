@@ -65,11 +65,8 @@ export default function VendorsPage() {
 
   const vendorsQuery = useMemoFirebase(
     () => {
-      if (!firestore) return null;
-      if (tenantId && tenantId !== 'default_workspace') {
-        return query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId));
-      }
-      return query(collection(firestore, 'vendors'));
+      if (!firestore || !tenantId) return null;
+      return query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId));
     },
     [firestore, tenantId]
   );
@@ -104,7 +101,7 @@ export default function VendorsPage() {
     if (!vendors) return [];
     const searchTerm = searchQuery.toLowerCase();
     return vendors
-      .filter(v => !v.tenantId || v.tenantId === tenantId || (tenantId === 'default_workspace' && (!v.tenantId || v.tenantId === 'default_workspace')))
+      .filter(v => v.tenantId === tenantId)
       .filter(vendor =>
         vendor.vendorName.toLowerCase().includes(searchTerm) ||
         vendor.phoneNumber.toLowerCase().includes(searchTerm) ||

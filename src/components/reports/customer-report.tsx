@@ -4,26 +4,29 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useFirestore } from '@/firebase';
-import { collection, query, getDocs, collectionGroup } from 'firebase/firestore';
+import { collection, query, getDocs, collectionGroup, where } from 'firebase/firestore';
+import { useUserProfile } from '@/hooks/use-user-profile';
 import type { Customer, Sale, InflowTransaction, Project, Flat } from '@/lib/types';
 import { exportToCsv } from '@/lib/csv';
 import { useToast } from '@/hooks/use-toast';
 import { Download } from 'lucide-react';
 
 export function CustomerReport() {
+  const { tenantId } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleExport = async () => {
+    if (!firestore || !tenantId) return;
     setIsLoading(true);
     try {
-      // 1. Fetch all necessary data sets concurrently.
+      // 1. Fetch tenant-scoped data sets concurrently.
       const [customersSnap, salesSnap, projectsSnap, inflowsSnap] = await Promise.all([
-        getDocs(collection(firestore, 'customers')),
-        getDocs(collection(firestore, 'sales')),
-        getDocs(collection(firestore, 'projects')),
-        getDocs(collectionGroup(firestore, 'inflowTransactions')),
+        getDocs(query(collection(firestore, 'customers'), where('tenantId', '==', tenantId))),
+        getDocs(query(collection(firestore, 'sales'), where('tenantId', '==', tenantId))),
+        getDocs(query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
+        getDocs(query(collectionGroup(firestore, 'inflowTransactions'), where('tenantId', '==', tenantId))),
       ]);
 
       const customers = customersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));

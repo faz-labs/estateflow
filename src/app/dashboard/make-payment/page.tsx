@@ -77,7 +77,7 @@ export type EnrichedOutflow = OutflowTransaction & {
 const PAYMENTS_PER_PAGE = 10;
 
 export default function MakePaymentPage() {
-  const { formatCurrency, currencySymbol, isViewer, tenant, companyName } = useUserProfile();
+  const { tenantId, formatCurrency, currencySymbol, isViewer, tenant, companyName } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   
@@ -96,7 +96,10 @@ export default function MakePaymentPage() {
 
 
   // Data for forms
-  const vendorsQuery = useMemoFirebase(() => query(collection(firestore, 'vendors')), [firestore]);
+  const vendorsQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: vendors, isLoading: vendorsLoading } = useCollection<Vendor>(vendorsQuery);
 
   const form = useForm<MakePaymentFormValues>({
@@ -126,6 +129,7 @@ export default function MakePaymentPage() {
     const fetchUnpaidExpenses = async () => {
       const expensesQuery = query(
         collection(firestore, 'expenses'),
+        where('tenantId', '==', tenantId),
         where('vendorId', '==', vendorId),
         where('status', 'in', ['Unpaid', 'Partially Paid'])
       );
@@ -148,17 +152,17 @@ export default function MakePaymentPage() {
 
   // Fetch Outflow transactions for the log
   useEffect(() => {
-    if (!isDataDirty) return;
+    if (!isDataDirty || !tenantId || !firestore) return;
 
     const fetchOutflows = async () => {
         setIsLoadingLog(true);
         try {
-            const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'));
+            const outflowsQuery = query(collectionGroup(firestore, 'outflowTransactions'), where('tenantId', '==', tenantId));
             const [outflowSnap, projectsSnap, itemsSnap, expensesSnap] = await Promise.all([
                 getDocs(outflowsQuery),
-                getDocs(collection(firestore, 'projects')),
-                getDocs(collection(firestore, 'expenseItems')),
-                getDocs(collection(firestore, 'expenses')), // Fetch all expenses
+                getDocs(query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
+                getDocs(query(collection(firestore, 'expenseItems'), where('tenantId', '==', tenantId))),
+                getDocs(query(collection(firestore, 'expenses'), where('tenantId', '==', tenantId))),
             ]);
             
             const projectsMap = new Map(projectsSnap.docs.map(d => [d.id, d.data().projectName]));
@@ -194,7 +198,7 @@ export default function MakePaymentPage() {
         setIsDataDirty(false);
     };
     fetchOutflows();
-  }, [firestore, isDataDirty, toast]);
+  }, [firestore, isDataDirty, toast, tenantId]);
 
   async function onSubmit(data: MakePaymentFormValues) {
     if (isViewer) {
@@ -242,6 +246,7 @@ export default function MakePaymentPage() {
             description: `Payment for ${selectedExpense.expenseId}`,
             paymentMethod: data.paymentMethod,
             reference: data.reference,
+            tenantId: tenantId || 'default_workspace',
         });
 
         await batch.commit();

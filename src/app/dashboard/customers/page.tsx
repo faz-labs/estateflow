@@ -65,11 +65,8 @@ export default function CustomersPage() {
 
   const customersQuery = useMemoFirebase(
     () => {
-      if (!firestore) return null;
-      if (tenantId && tenantId !== 'default_workspace') {
-        return query(collection(firestore, 'customers'), where('tenantId', '==', tenantId));
-      }
-      return query(collection(firestore, 'customers'));
+      if (!firestore || !tenantId) return null;
+      return query(collection(firestore, 'customers'), where('tenantId', '==', tenantId));
     },
     [firestore, tenantId]
   );
@@ -104,7 +101,7 @@ export default function CustomersPage() {
     if (!customers) return [];
     const searchTerm = searchQuery.toLowerCase();
     return customers
-      .filter(c => !c.tenantId || c.tenantId === tenantId || (tenantId === 'default_workspace' && (!c.tenantId || c.tenantId === 'default_workspace')))
+      .filter(c => c.tenantId === tenantId)
       .filter(customer =>
         customer.fullName.toLowerCase().includes(searchTerm) ||
         customer.mobile.toLowerCase().includes(searchTerm) ||

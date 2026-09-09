@@ -49,7 +49,7 @@ type CustomerSummaryData = {
 };
 
 export function CustomerSummary() {
-  const { formatCurrency } = useUserProfile();
+  const { formatCurrency, tenantId } = useUserProfile();
   const firestore = useFirestore();
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [selectedFlatId, setSelectedFlatId] = useState<string>("");
@@ -58,8 +58,8 @@ export function CustomerSummary() {
   const [soldFlats, setSoldFlats] = useState<Flat[]>([]);
   
   const projectsQuery = useMemoFirebase(
-    () => collection(firestore, 'projects'),
-    [firestore]
+    () => (firestore && tenantId ? query(collection(firestore, 'projects'), where('tenantId', '==', tenantId)) : null),
+    [firestore, tenantId]
   );
   const { data: projects, isLoading: projectsLoading } = useCollection<Project>(projectsQuery);
 

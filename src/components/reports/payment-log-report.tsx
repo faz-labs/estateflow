@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Combobox } from '@/components/ui/combobox';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, getDocs, collectionGroup } from 'firebase/firestore';
+import { collection, query, getDocs, collectionGroup, where } from 'firebase/firestore';
+import { useUserProfile } from '@/hooks/use-user-profile';
 import type { Customer, InflowTransaction, Project, Flat } from '@/lib/types';
 import { exportToCsv } from '@/lib/csv';
 import { useToast } from '@/hooks/use-toast';
@@ -15,6 +16,7 @@ import { Download } from 'lucide-react';
 import { isDateWithinRange, formatDateForDisplay } from '@/lib/date-utils';
 
 export function PaymentLogReport() {
+  const { tenantId } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -22,18 +24,25 @@ export function PaymentLogReport() {
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const projectsQuery = useMemoFirebase(() => query(collection(firestore, 'projects')), [firestore]);
+  const projectsQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: projects, isLoading: projectsLoading } = useCollection<Project>(projectsQuery);
 
-  const customersQuery = useMemoFirebase(() => query(collection(firestore, 'customers')), [firestore]);
+  const customersQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'customers'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: customers, isLoading: customersLoading } = useCollection<Customer>(customersQuery);
 
   const handleExport = async () => {
+    if (!firestore || !tenantId) return;
     setIsLoading(true);
     try {
-      const inflowsQuery = query(collectionGroup(firestore, 'inflowTransactions'));
-      const projectsQuery = query(collection(firestore, 'projects'));
-      const customersQuery = query(collection(firestore, 'customers'));
+      const inflowsQuery = query(collectionGroup(firestore, 'inflowTransactions'), where('tenantId', '==', tenantId));
+      const projectsQuery = query(collection(firestore, 'projects'), where('tenantId', '==', tenantId));
+      const customersQuery = query(collection(firestore, 'customers'), where('tenantId', '==', tenantId));
       
       const [inflowsSnap, projectsSnap, customersSnap] = await Promise.all([
         getDocs(inflowsQuery),

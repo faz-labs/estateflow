@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 import { useFirestore, useCollection, useMemoFirebase, addDocumentNonBlocking, deleteDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
-import { collection, query, doc, writeBatch, getDocs, runTransaction } from 'firebase/firestore';
+import { collection, query, doc, writeBatch, getDocs, runTransaction, where } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { getTodayDateString, formatDateForDisplay, isDateWithinRange } from '@/lib/date-utils';
@@ -178,26 +178,35 @@ export default function AddExpensePage() {
 
 
   // Data fetching for form
-  const vendorsQuery = useMemoFirebase(() => query(collection(firestore, 'vendors')), [firestore]);
+  const vendorsQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: vendors, isLoading: vendorsLoading } = useCollection<Vendor>(vendorsQuery);
 
-  const projectsQuery = useMemoFirebase(() => query(collection(firestore, 'projects')), [firestore]);
+  const projectsQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: projects, isLoading: projectsLoading } = useCollection<Project>(projectsQuery);
 
-  const itemsQuery = useMemoFirebase(() => query(collection(firestore, 'expenseItems')), [firestore]);
+  const itemsQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'expenseItems'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: expenseItems, isLoading: itemsLoading } = useCollection<ExpenseItem>(itemsQuery);
 
   // Fetch and enrich expenses for the log
   useEffect(() => {
     // Definitive Guard: Ensure all data dependencies are loaded and available.
-    if (!isDataDirty || !vendors || !projects || !expenseItems) {
+    if (!isDataDirty || !vendors || !projects || !expenseItems || !tenantId) {
       return;
     }
     
     const fetchAndEnrichExpenses = async () => {
         setIsLoadingLog(true);
         try {
-            const expensesSnap = await getDocs(query(collection(firestore, 'expenses')));
+            const expensesSnap = await getDocs(query(collection(firestore, 'expenses'), where('tenantId', '==', tenantId)));
             
             const vendorsMap = new Map(vendors.map(d => [d.id, d.vendorName]));
             const projectsMap = new Map(projects.map(d => [d.id, d.projectName]));
@@ -230,7 +239,7 @@ export default function AddExpensePage() {
     
     fetchAndEnrichExpenses();
 
-  }, [firestore, toast, isDataDirty, vendors, projects, expenseItems]);
+  }, [firestore, toast, isDataDirty, vendors, projects, expenseItems, tenantId]);
 
 
   const form = useForm<AddExpenseFormValues>({

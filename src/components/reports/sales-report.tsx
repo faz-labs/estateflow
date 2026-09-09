@@ -13,20 +13,23 @@ import { DateRange } from 'react-day-picker';
 import { Download } from 'lucide-react';
 
 import { isDateWithinRange, formatDateForDisplay } from '@/lib/date-utils';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 export function SalesReport() {
+  const { tenantId } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleExport = async () => {
+    if (!firestore || !tenantId) return;
     setIsLoading(true);
     try {
-      // 1. Fetch all necessary data
-      const salesQuery = query(collection(firestore, 'sales'));
-      const projectsQuery = query(collection(firestore, 'projects'));
-      const customersQuery = query(collection(firestore, 'customers'));
+      // 1. Fetch tenant-scoped data
+      const salesQuery = query(collection(firestore, 'sales'), where('tenantId', '==', tenantId));
+      const projectsQuery = query(collection(firestore, 'projects'), where('tenantId', '==', tenantId));
+      const customersQuery = query(collection(firestore, 'customers'), where('tenantId', '==', tenantId));
       
       const [salesSnap, projectsSnap, customersSnap] = await Promise.all([
         getDocs(salesQuery),

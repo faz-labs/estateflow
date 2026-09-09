@@ -101,7 +101,7 @@ export default function CustomerDetailPage({
 }: {
   params: Promise<{ customerId: string }>;
 }) {
-  const { formatCompactCurrency } = useUserProfile();
+  const { tenantId, formatCompactCurrency } = useUserProfile();
   const firestore = useFirestore();
   const router = useRouter();
   const { customerId } = use(params);
@@ -121,17 +121,18 @@ export default function CustomerDetailPage({
   const [isDataDirty, setIsDataDirty] = useState(true);
 
   useEffect(() => {
-    if (!customerId || !firestore || !isDataDirty) return;
+    if (!customerId || !firestore || !isDataDirty || !tenantId) return;
 
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        // 1. Fetch customer and their sales records concurrently
+        // 1. Fetch customer and their sales records concurrently scoped to tenant
         const customerRef = doc(firestore, 'customers', customerId);
         const salesQuery = query(
           collection(firestore, 'sales'),
-          where('customerId', '==', customerId)
+          where('customerId', '==', customerId),
+          where('tenantId', '==', tenantId)
         );
 
         const [customerSnap, salesSnap] = await Promise.all([
@@ -145,6 +146,11 @@ export default function CustomerDetailPage({
         }
 
         const customerData = customerSnap.data() as Customer;
+        if (customerData.tenantId && customerData.tenantId !== tenantId) {
+          notFound();
+          return;
+        }
+
         const salesData = salesSnap.docs.map(
           d => ({ ...d.data(), id: d.id } as Sale)
         );
@@ -213,7 +219,7 @@ export default function CustomerDetailPage({
     };
 
     fetchData();
-  }, [customerId, firestore, isDataDirty]);
+  }, [customerId, firestore, isDataDirty, tenantId]);
 
   // Derived state for filtered and paginated payments
   const filteredPayments = useMemo(() => {

@@ -16,7 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 import { useFirestore, useCollection, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
-import { collection, query, doc } from 'firebase/firestore';
+import { collection, query, doc, where } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import type { Project, Vendor, ExpenseItem, Expense } from '@/lib/types';
 import { Textarea } from '@/components/ui/textarea';
@@ -44,17 +44,26 @@ interface EditExpenseFormProps {
 }
 
 export function EditExpenseForm({ expense, setDialogOpen, onUpdate }: EditExpenseFormProps) {
-  const { currencySymbol } = useUserProfile();
+  const { tenantId, currencySymbol } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
 
-  const vendorsQuery = useMemoFirebase(() => query(collection(firestore, 'vendors')), [firestore]);
+  const vendorsQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'vendors'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: vendors, isLoading: vendorsLoading } = useCollection<Vendor>(vendorsQuery);
 
-  const projectsQuery = useMemoFirebase(() => query(collection(firestore, 'projects')), [firestore]);
+  const projectsQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'projects'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: projects, isLoading: projectsLoading } = useCollection<Project>(projectsQuery);
 
-  const itemsQuery = useMemoFirebase(() => query(collection(firestore, 'expenseItems')), [firestore]);
+  const itemsQuery = useMemoFirebase(
+    () => (!firestore || !tenantId ? null : query(collection(firestore, 'expenseItems'), where('tenantId', '==', tenantId))),
+    [firestore, tenantId]
+  );
   const { data: expenseItems, isLoading: itemsLoading } = useCollection<ExpenseItem>(itemsQuery);
 
   const form = useForm<EditExpenseFormValues>({

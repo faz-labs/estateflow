@@ -44,7 +44,7 @@ import {
     DropdownMenuTrigger,
   } from "@/components/ui/dropdown-menu"
 import { useFirestore } from '@/firebase';
-import { collection, query, getDocs, doc, writeBatch, getDoc } from 'firebase/firestore';
+import { collection, query, getDocs, doc, writeBatch, getDoc, where } from 'firebase/firestore';
 import type { Sale, Project, Flat, Customer } from '@/lib/types';
 import { useEffect, useState, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -62,7 +62,7 @@ type EnrichedSale = Sale & {
 const ITEMS_PER_PAGE = 15;
 
 export default function SalesPage() {
-  const { formatCompactCurrency } = useUserProfile();
+  const { tenantId, formatCompactCurrency } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   const [sales, setSales] = useState<Sale[]>([]);
@@ -92,15 +92,15 @@ export default function SalesPage() {
   };
 
   useEffect(() => {
-    if (!isDataDirty || !firestore) return;
+    if (!isDataDirty || !firestore || !tenantId) return;
 
     const fetchAndEnrichSales = async () => {
       setIsLoading(true);
       try {
-        // 1. Fetch all data concurrently
-        const salesQuery = query(collection(firestore, 'sales'));
-        const projectsQuery = query(collection(firestore, 'projects'));
-        const customersQuery = query(collection(firestore, 'customers'));
+        // 1. Fetch tenant-scoped data concurrently
+        const salesQuery = query(collection(firestore, 'sales'), where('tenantId', '==', tenantId));
+        const projectsQuery = query(collection(firestore, 'projects'), where('tenantId', '==', tenantId));
+        const customersQuery = query(collection(firestore, 'customers'), where('tenantId', '==', tenantId));
 
         const [salesSnap, projectsSnap, customersSnap] = await Promise.all([
           getDocs(salesQuery),
@@ -148,7 +148,7 @@ export default function SalesPage() {
     };
 
     fetchAndEnrichSales();
-  }, [firestore, toast, isDataDirty]);
+  }, [firestore, toast, isDataDirty, tenantId]);
   
   const handleDeleteClick = (sale: Sale) => {
     setSelectedSale(sale);

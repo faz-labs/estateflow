@@ -65,11 +65,8 @@ export default function ProjectsPage() {
 
   const projectsQuery = useMemoFirebase(
     () => {
-      if (!firestore) return null;
-      if (tenantId && tenantId !== 'default_workspace') {
-        return query(collection(firestore, 'projects'), where('tenantId', '==', tenantId));
-      }
-      return query(collection(firestore, 'projects'));
+      if (!firestore || !tenantId) return null;
+      return query(collection(firestore, 'projects'), where('tenantId', '==', tenantId));
     },
     [firestore, tenantId]
   );
@@ -166,7 +163,7 @@ export default function ProjectsPage() {
     if (!projects) return [];
     const searchTerm = searchQuery.toLowerCase();
     return projects
-      .filter(p => !p.tenantId || p.tenantId === tenantId || (tenantId === 'default_workspace' && (!p.tenantId || p.tenantId === 'default_workspace')))
+      .filter(p => p.tenantId === tenantId)
       .filter(project =>
         project.projectName.toLowerCase().includes(searchTerm) ||
         project.location.toLowerCase().includes(searchTerm) ||
