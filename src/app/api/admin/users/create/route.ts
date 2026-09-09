@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase-admin';
 
-const SUPER_ADMIN_EMAILS = [
-  'anonto.kings9@gmail.com',
-  'admin@remotizedit.online',
-  'estate.admin@remotizedit.online',
-];
+import { isSuperAdminEmail } from '@/lib/auth-constants';
 
 /**
  * Super Admin endpoint to provision a new user in Firebase Auth and Firestore.
@@ -57,7 +53,7 @@ export async function POST(request: Request) {
     }
 
     // 2. Enforce Super Admin authorization
-    if (!SUPER_ADMIN_EMAILS.includes(callerEmail)) {
+    if (!isSuperAdminEmail(callerEmail)) {
       return NextResponse.json(
         { error: 'Forbidden: Only platform Super Admins can provision user accounts.' },
         { status: 403 }

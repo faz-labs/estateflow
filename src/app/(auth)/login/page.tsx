@@ -27,7 +27,8 @@ import {
 } from '@/components/ui/dialog';
 import { Loader2, Mail, Lock, LogIn } from 'lucide-react';
 import type { Tenant, TenantInvite, User as UserProfile } from '@/lib/types';
-import { SUPER_ADMIN_EMAILS, useUserProfile } from '@/hooks/use-user-profile';
+import { useUserProfile } from '@/hooks/use-user-profile';
+import { isSuperAdminEmail } from '@/lib/auth-constants';
 import { ForceChangePasswordModal } from '@/components/auth/force-change-password-modal';
 
 export default function LoginPage() {
@@ -77,14 +78,15 @@ export default function LoginPage() {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      const isSuperAdminEmail = SUPER_ADMIN_EMAILS.includes(normalizedEmail);
+      const isSuperEmail = isSuperAdminEmail(normalizedEmail);
 
       // Ensure user document exists in Firestore and has tenant metadata
       const userDocRef = doc(firestore, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
+      const isSuperRole = userDoc.exists() && (userDoc.data() as UserProfile).role === 'SuperAdmin';
 
-      if (isSuperAdminEmail) {
-        // Provision or upgrade Super Admin automatically
+      if (isSuperEmail || isSuperRole) {
+        // Provision or upgrade Super Admin profile automatically
         if (!userDoc.exists() || (userDoc.data() as UserProfile).role !== 'SuperAdmin') {
           const superUserProfile: UserProfile = {
             id: user.uid,

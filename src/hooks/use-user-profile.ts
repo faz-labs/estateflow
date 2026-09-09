@@ -6,11 +6,8 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import type { User as UserProfile, Tenant, SubscriptionPlan, TenantStatus } from '@/lib/types';
 import { getCurrency, formatCurrency as formatCurrencyUtil, formatCompactCurrency as formatCompactCurrencyUtil, DEFAULT_CURRENCY_CODE } from '@/lib/currencies';
 
-export const SUPER_ADMIN_EMAILS = [
-  'anonto.kings9@gmail.com',
-  'admin@remotizedit.online',
-  'estate.admin@remotizedit.online',
-];
+import { isSuperAdminEmail, getSuperAdminEmails, SUPER_ADMIN_EMAILS } from '@/lib/auth-constants';
+export { SUPER_ADMIN_EMAILS, isSuperAdminEmail, getSuperAdminEmails };
 
 export interface UserProfileState {
   profile: UserProfile | null;
@@ -73,7 +70,7 @@ export function useUserProfile(): UserProfileState {
           // If profile doc doesn't exist yet, construct a fallback
           const [firstName, lastName] = user.displayName?.split(' ') || [user.email?.split('@')[0] || 'User', ''];
           const userEmail = user.email?.toLowerCase() || '';
-          const isSuper = SUPER_ADMIN_EMAILS.includes(userEmail);
+          const isSuper = isSuperAdminEmail(userEmail);
           
           setProfile({
             id: user.uid,
@@ -124,7 +121,7 @@ export function useUserProfile(): UserProfileState {
   }, [firestore, profile?.tenantId]);
 
   const userEmail = user?.email?.toLowerCase() || '';
-  const isSuper = SUPER_ADMIN_EMAILS.includes(userEmail) || profile?.role === 'SuperAdmin';
+  const isSuper = isSuperAdminEmail(userEmail) || profile?.role === 'SuperAdmin';
   const role: 'SuperAdmin' | 'Admin' | 'Accountant' | 'Viewer' = isSuper 
     ? 'SuperAdmin' 
     : (profile?.role || 'Viewer');
