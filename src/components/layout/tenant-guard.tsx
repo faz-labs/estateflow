@@ -140,7 +140,7 @@ export function TenantGuard({ children }: { children: ReactNode }) {
               <strong>Demo Evaluation Mode:</strong> {daysRemainingInDemo} day{daysRemainingInDemo === 1 ? '' : 's'} remaining in your trial.
             </span>
           </div>
-          <span className="text-[11px] opacity-80">Contact admin@remotizedit.online to upgrade</span>
+          <span className="text-[11px] opacity-80">Contact support@remotizedit.online to upgrade</span>
         </div>
       )}
 
