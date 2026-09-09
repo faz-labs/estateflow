@@ -26,6 +26,7 @@ const customerFormSchema = z.object({
   mobile: z.string().min(11, {
     message: 'Mobile number must be at least 11 digits.',
   }),
+  email: z.string().email('Please enter a valid email address.').optional().or(z.literal('')),
   address: z.string().min(5, {
     message: 'Address must be at least 5 characters.',
   }),
@@ -49,6 +50,7 @@ export function AddCustomerForm({ setDialogOpen }: AddCustomerFormProps) {
     defaultValues: {
       fullName: '',
       mobile: '',
+      email: '',
       address: '',
       nidNumber: '',
     },
@@ -116,6 +118,19 @@ export function AddCustomerForm({ setDialogOpen }: AddCustomerFormProps) {
                 <FormLabel>Mobile</FormLabel>
                 <FormControl>
                   <Input placeholder="E.g., 01712345678" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email Address (Optional - for payment receipts)</FormLabel>
+                <FormControl>
+                  <Input type="email" placeholder="E.g., customer@example.com" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

@@ -207,7 +207,7 @@ export default function CustomersPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Full Name</TableHead>
-                    <TableHead>Mobile</TableHead>
+                    <TableHead>Contact</TableHead>
                     <TableHead>Address</TableHead>
                     <TableHead>NID Number</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -219,7 +219,12 @@ export default function CustomersPage() {
                       <TableCell className="font-medium">
                         {customer.fullName}
                       </TableCell>
-                      <TableCell>{customer.mobile}</TableCell>
+                      <TableCell>
+                        <div className="font-medium">{customer.mobile}</div>
+                        {customer.email && (
+                          <div className="text-xs text-muted-foreground truncate max-w-[180px]">{customer.email}</div>
+                        )}
+                      </TableCell>
                       <TableCell>{customer.address}</TableCell>
                       <TableCell>{customer.nidNumber}</TableCell>
                       <TableCell className="text-right">

@@ -77,7 +77,7 @@ export type EnrichedOutflow = OutflowTransaction & {
 const PAYMENTS_PER_PAGE = 10;
 
 export default function MakePaymentPage() {
-  const { formatCurrency, currencySymbol, isViewer } = useUserProfile();
+  const { formatCurrency, currencySymbol, isViewer, tenant, companyName } = useUserProfile();
   const firestore = useFirestore();
   const { toast } = useToast();
   
@@ -246,7 +246,45 @@ export default function MakePaymentPage() {
 
         await batch.commit();
 
+        const vendor = vendors?.find(v => v.id === data.vendorId);
+
         toast({ title: 'Payment Successful', description: `Paid ${formatCurrency(data.amountToPay)} for expense ${selectedExpense.expenseId}` });
+
+        // Automated Email Notification via SMTP if vendor has email configured
+        if (vendor?.email) {
+          fetch('/api/notifications/payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'vendor_remittance',
+              recipientEmail: vendor.email,
+              vendorName: vendor.vendorName,
+              enterpriseName: vendor.enterpriseName,
+              expenseId: selectedExpense.expenseId,
+              amount: data.amountToPay,
+              formattedAmount: formatCurrency(data.amountToPay),
+              currencySymbol,
+              paymentMethod: data.paymentMethod,
+              date: data.paymentDate,
+              reference: data.reference,
+              description: `Payment for ${selectedExpense.expenseId}`,
+              companyName: tenant?.name || companyName || 'EstateFlow Real Estate',
+              companyPhone: tenant?.phone,
+              companyEmail: tenant?.email,
+              companyAddress: tenant?.address,
+            }),
+          })
+            .then(res => res.json())
+            .then(resData => {
+              if (resData.success) {
+                toast({
+                  title: 'Remittance Email Sent',
+                  description: `Payment voucher #${selectedExpense.expenseId} sent to ${vendor.email}.`,
+                });
+              }
+            })
+            .catch(err => console.error('Failed to dispatch vendor remittance email:', err));
+        }
         form.reset({
             vendorId: data.vendorId,
             expenseId: '',

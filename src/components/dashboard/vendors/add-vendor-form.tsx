@@ -27,6 +27,7 @@ const vendorFormSchema = z.object({
   phoneNumber: z.string().min(11, {
     message: 'Phone number must be at least 11 digits.',
   }),
+  email: z.string().email('Please enter a valid email address.').optional().or(z.literal('')),
   enterpriseName: z.string().min(2, {
     message: 'Enterprise name must be at least 2 characters.',
   }),
@@ -48,6 +49,7 @@ export function AddVendorForm({ setDialogOpen }: AddVendorFormProps) {
     defaultValues: {
       vendorName: '',
       phoneNumber: '',
+      email: '',
       enterpriseName: '',
       details: '',
     },
@@ -115,6 +117,19 @@ export function AddVendorForm({ setDialogOpen }: AddVendorFormProps) {
                 <FormLabel>Phone Number</FormLabel>
                 <FormControl>
                   <Input placeholder="E.g., 01712345678" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email Address (Optional - for payment remittance)</FormLabel>
+                <FormControl>
+                  <Input type="email" placeholder="E.g., vendor@company.com" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

@@ -174,6 +174,7 @@ export interface Customer {
   id: string;
   fullName: string;
   mobile: string;
+  email?: string;
   address: string;
   nidNumber: string;
   tenantId?: string;
@@ -183,6 +184,7 @@ export interface Vendor {
   id: string;
   vendorName: string;
   phoneNumber: string;
+  email?: string;
   enterpriseName: string;
   details?: string;
   tenantId?: string;

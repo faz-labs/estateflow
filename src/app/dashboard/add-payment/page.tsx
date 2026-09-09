@@ -142,7 +142,7 @@ export type EnrichedTransaction = InflowTransaction & {
 export default function AddPaymentPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { tenantId, currencySymbol, formatCurrency, isViewer } = useUserProfile();
+  const { tenantId, currencySymbol, formatCurrency, isViewer, tenant, companyName } = useUserProfile();
   const router = useRouter();
 
   const [projectsForCustomer, setProjectsForCustomer] = useState<Project[]>([]);
@@ -388,6 +388,43 @@ export default function AddPaymentPage() {
             title: 'Payment Recorded',
             description: `Payment of ${formatCurrency(data.amount)} has been successfully recorded with Receipt ID: ${receiptId}.`,
         });
+
+        // Automated Email Notification via SMTP if customer has email configured
+        if (customer?.email) {
+          fetch('/api/notifications/payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'customer_receipt',
+              recipientEmail: customer.email,
+              customerName: customer.fullName,
+              receiptId,
+              amount: data.amount,
+              formattedAmount: formatCurrency(data.amount),
+              currencySymbol,
+              paymentMethod: data.paymentMethod,
+              paymentPurpose: data.paymentPurpose === 'Other' && data.otherPurpose ? data.otherPurpose : data.paymentPurpose,
+              date: data.date,
+              projectName: project?.projectName,
+              flatNumber: flat?.flatNumber,
+              reference: data.reference,
+              companyName: tenant?.name || companyName || 'EstateFlow Real Estate',
+              companyPhone: tenant?.phone,
+              companyEmail: tenant?.email,
+              companyAddress: tenant?.address,
+            }),
+          })
+            .then(res => res.json())
+            .then(resData => {
+              if (resData.success) {
+                toast({
+                  title: 'Email Receipt Sent',
+                  description: `Money receipt #${receiptId} sent to ${customer.email}.`,
+                });
+              }
+            })
+            .catch(err => console.error('Failed to dispatch customer receipt email:', err));
+        }
 
         if (customer && project && flat) {
             const enrichedPayment = {

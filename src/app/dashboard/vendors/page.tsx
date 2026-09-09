@@ -207,7 +207,7 @@ export default function VendorsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Vendor Name</TableHead>
-                      <TableHead>Phone Number</TableHead>
+                      <TableHead>Contact</TableHead>
                       <TableHead>Enterprise</TableHead>
                       <TableHead>Details</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -219,7 +219,12 @@ export default function VendorsPage() {
                         <TableCell className="font-medium">
                           {vendor.vendorName}
                         </TableCell>
-                        <TableCell>{vendor.phoneNumber}</TableCell>
+                        <TableCell>
+                          <div className="font-medium">{vendor.phoneNumber}</div>
+                          {vendor.email && (
+                            <div className="text-xs text-muted-foreground truncate max-w-[180px]">{vendor.email}</div>
+                          )}
+                        </TableCell>
                         <TableCell>{vendor.enterpriseName}</TableCell>
                         <TableCell className="max-w-[200px] truncate">{vendor.details}</TableCell>
                         <TableCell className="text-right">
