@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminAuth } from '@/lib/firebase-admin';
+import { getAdminAuth } from '@/lib/firebase-admin';
 
 /**
  * Confirms custom password reset token generated via Mailcow email dispatch
@@ -59,6 +59,7 @@ export async function POST(request: Request) {
     }
 
     // 2. Actually update user password in Firebase Authentication!
+    const adminAuth = getAdminAuth();
     if (adminAuth) {
       try {
         const userRecord = await adminAuth.getUserByEmail(email);

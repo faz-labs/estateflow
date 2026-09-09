@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
-import { adminAuth } from '@/lib/firebase-admin';
+import { getAdminAuth } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -64,6 +64,7 @@ export async function POST(request: Request) {
     // Option A: Try generating official Firebase oobCode via Admin SDK (suppresses Google's email!)
     let resetUrl = '';
 
+    const adminAuth = getAdminAuth();
     if (adminAuth) {
       try {
         const link = await Promise.race([
