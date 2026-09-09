@@ -397,3 +397,227 @@ export async function updateUserPasswordDirectly(
 
   return { success: true, uid, email: normalizedEmail };
 }
+
+function getAdminServiceAccountCredentials(): any {
+  const serviceAccountEnv =
+    process.env.FIREBASE_SERVICE_ACCOUNT_KEY ||
+    process.env.FIREBASE_SERVICE_ACCOUNT ||
+    process.env.FIREBASE_ADMIN_KEY ||
+    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+
+  let credentialsObj: any = null;
+  if (serviceAccountEnv) {
+    try {
+      credentialsObj = parseServiceAccount(serviceAccountEnv);
+    } catch {}
+  }
+  if (!credentialsObj) {
+    credentialsObj = DEFAULT_SERVICE_ACCOUNT;
+  }
+  if (credentialsObj && credentialsObj.private_key) {
+    credentialsObj.private_key = sanitizePrivateKey(credentialsObj.private_key);
+  }
+  return credentialsObj;
+}
+
+/**
+ * Directly writes a new user provision request to Firestore using authenticated GoogleAuth REST API.
+ */
+
+export async function createUserRequestDirectly(requestData: {
+  tenantId: string;
+  companyName: string;
+  requestedByEmail: string;
+  requestedByName: string;
+  targetEmail: string;
+  targetName: string;
+  targetRole: string;
+  notes: string;
+}): Promise<{ success: boolean; id: string }> {
+  const { GoogleAuth } = require('google-auth-library');
+
+  const credentialsObj = getAdminServiceAccountCredentials();
+  const projectId = credentialsObj?.project_id || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'studio-907320032-3bcaf';
+
+  const auth = new GoogleAuth({
+    credentials: credentialsObj,
+    scopes: ['https://www.googleapis.com/auth/datastore'],
+  });
+
+  const client = await auth.getClient();
+  const tokenObj = await client.getAccessToken();
+  const token = tokenObj.token;
+
+  if (!token) {
+    throw new Error('Failed to acquire Google authorization token for Firestore.');
+  }
+
+  const restUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/user_requests`;
+  const restRes = await fetch(restUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      fields: {
+        tenantId: { stringValue: requestData.tenantId },
+        companyName: { stringValue: requestData.companyName },
+        requestedByEmail: { stringValue: requestData.requestedByEmail },
+        requestedByName: { stringValue: requestData.requestedByName },
+        targetEmail: { stringValue: requestData.targetEmail },
+        targetName: { stringValue: requestData.targetName },
+        targetRole: { stringValue: requestData.targetRole },
+        notes: { stringValue: requestData.notes },
+        status: { stringValue: 'pending' },
+        createdAt: { stringValue: new Date().toISOString() },
+      },
+    }),
+  });
+
+  const resData = await restRes.json();
+  if (!restRes.ok) {
+    throw new Error(resData.error?.message || 'Failed to record user request in Firestore.');
+  }
+
+  const docPath = resData.name || '';
+  const docId = docPath.split('/').pop() || 'req_' + Date.now();
+
+  return { success: true, id: docId };
+}
+
+/**
+ * Direct REST query for all user provisioning requests using OAuth2 service account token.
+ * Zero dependency on client SDK rules or composite indexes.
+ */
+export async function getUserRequestsDirectly(): Promise<any[]> {
+  const credentials = getAdminServiceAccountCredentials();
+  if (!credentials) {
+    throw new Error('Service account credentials unavailable for reading user requests.');
+  }
+
+  const { GoogleAuth } = await import('google-auth-library');
+  const auth = new GoogleAuth({
+    credentials,
+    scopes: ['https://www.googleapis.com/auth/datastore'],
+  });
+
+  const client = await auth.getClient();
+  const tokenObj = await client.getAccessToken();
+  const token = tokenObj.token;
+
+  if (!token) {
+    throw new Error('Failed to acquire Google authorization token for Firestore read.');
+  }
+
+  const projectId = credentials.project_id || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  const restUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/user_requests?pageSize=100`;
+
+  const restRes = await fetch(restUrl, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    cache: 'no-store',
+  });
+
+  if (!restRes.ok) {
+    const errText = await restRes.text();
+    console.error('Failed to fetch user requests directly:', errText);
+    return [];
+  }
+
+  const data = await restRes.json();
+  const documents = data.documents || [];
+
+  const parseValue = (val: any) => {
+    if (!val) return '';
+    if (val.stringValue !== undefined) return val.stringValue;
+    if (val.integerValue !== undefined) return Number(val.integerValue);
+    if (val.booleanValue !== undefined) return val.booleanValue;
+    if (val.timestampValue !== undefined) return val.timestampValue;
+    return '';
+  };
+
+  const requests = documents.map((doc: any) => {
+    const id = (doc.name || '').split('/').pop() || '';
+    const fields = doc.fields || {};
+    return {
+      id,
+      tenantId: parseValue(fields.tenantId),
+      companyName: parseValue(fields.companyName),
+      requestedByEmail: parseValue(fields.requestedByEmail),
+      requestedByName: parseValue(fields.requestedByName),
+      targetEmail: parseValue(fields.targetEmail),
+      targetName: parseValue(fields.targetName),
+      targetRole: parseValue(fields.targetRole) || 'Viewer',
+      notes: parseValue(fields.notes),
+      status: parseValue(fields.status) || 'pending',
+      createdAt: parseValue(fields.createdAt) || doc.createTime || new Date().toISOString(),
+      approvedAt: parseValue(fields.approvedAt),
+      rejectedAt: parseValue(fields.rejectedAt),
+    };
+  });
+
+  // Sort descending by creation date
+  return requests.sort((a: any, b: any) => {
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return timeB - timeA;
+  });
+}
+
+/**
+ * Direct REST status update for a user request (approve or reject) using service account token.
+ */
+export async function updateUserRequestStatusDirectly(
+  requestId: string,
+  status: 'approved' | 'rejected'
+): Promise<boolean> {
+  const credentials = getAdminServiceAccountCredentials();
+  if (!credentials) {
+    throw new Error('Service account credentials unavailable for updating user request.');
+  }
+
+  const { GoogleAuth } = await import('google-auth-library');
+  const auth = new GoogleAuth({
+    credentials,
+    scopes: ['https://www.googleapis.com/auth/datastore'],
+  });
+
+  const client = await auth.getClient();
+  const tokenObj = await client.getAccessToken();
+  const token = tokenObj.token;
+
+  if (!token) {
+    throw new Error('Failed to acquire token.');
+  }
+
+  const projectId = credentials.project_id || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  const now = new Date().toISOString();
+  const timestampField = status === 'approved' ? 'approvedAt' : 'rejectedAt';
+
+  const restUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/user_requests/${requestId}?updateMask.fieldPaths=status&updateMask.fieldPaths=${timestampField}`;
+
+  const restRes = await fetch(restUrl, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      fields: {
+        status: { stringValue: status },
+        [timestampField]: { stringValue: now },
+      },
+    }),
+  });
+
+  if (!restRes.ok) {
+    const errText = await restRes.text();
+    console.error('Failed to patch user request directly:', errText);
+    return false;
+  }
+
+  return true;
+}

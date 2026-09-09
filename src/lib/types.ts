@@ -34,7 +34,86 @@ export interface Tenant {
   phone?: string;
   email?: string;
   website?: string;
+  assignedModules?: string[]; // Modular feature IDs enabled for this tenant workspace
 }
+
+export interface SystemModule {
+  id: string;
+  name: string;
+  description: string;
+  category: 'core' | 'finance' | 'operations' | 'automation' | 'upcoming';
+  badge?: string;
+  status: 'active' | 'beta' | 'planned';
+}
+
+export const SYSTEM_MODULES: SystemModule[] = [
+  {
+    id: 'inventory',
+    name: 'Plot & Multi-Unit Blueprint Inventory',
+    description: 'Manage unit layouts, blocks, dimensions, and real-time availability states.',
+    category: 'core',
+    status: 'active',
+  },
+  {
+    id: 'sales_booking',
+    name: 'Sales Contracts & Installment Generator',
+    description: 'Booking agreements, payment schedules, and automated overdue tracking.',
+    category: 'finance',
+    status: 'active',
+  },
+  {
+    id: 'procurement_ledger',
+    name: 'Procurement & Vendor Payable Ledger',
+    description: 'Contractor bills, raw materials accounting, and supplier payment vouchers.',
+    category: 'operations',
+    status: 'active',
+  },
+  {
+    id: 'direct_cashflow',
+    name: 'Direct Cashflow & Bank Accounts',
+    description: 'Real-time multi-account tracking, petty cash ledger, and money receipts.',
+    category: 'finance',
+    status: 'active',
+  },
+  {
+    id: 'operating_expenses',
+    name: 'Operating Costs & Corporate Overheads',
+    description: 'Corporate overheads, salaries, utilities, and branch expense attribution.',
+    category: 'operations',
+    status: 'active',
+  },
+  {
+    id: 'export_reporting',
+    name: 'Comprehensive Audit & Export Center',
+    description: 'Automated PDF money receipts, customer balance sheets, and Excel tax reports.',
+    category: 'automation',
+    status: 'active',
+  },
+  {
+    id: 'whatsapp_sms_alerts',
+    name: 'WhatsApp & SMS Gateway Alerts',
+    description: 'Automated installment due dates and payment receipts sent directly to buyer phones.',
+    category: 'automation',
+    badge: 'Q3 2026',
+    status: 'planned',
+  },
+  {
+    id: 'client_portal',
+    name: 'Customer Self-Service Installment Portal',
+    description: 'End-customer portal for clients to view payment schedules and pay online.',
+    category: 'upcoming',
+    badge: 'Q4 2026',
+    status: 'planned',
+  },
+  {
+    id: 'broker_commissions',
+    name: 'Agent & External Broker Commission Tracker',
+    description: 'Tiered agent bonus calculation, payout approval workflow, and referral ledgers.',
+    category: 'operations',
+    badge: 'Q4 2026',
+    status: 'planned',
+  },
+];
 
 export interface TenantInvite {
   id: string;

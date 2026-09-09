@@ -13,10 +13,12 @@ import {
   updateDoc,
   addDoc,
   orderBy,
+  onSnapshot,
 } from 'firebase/firestore';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { useToast } from '@/hooks/use-toast';
 import type { Tenant, TenantNotice, User as UserProfile, SubscriptionPlan } from '@/lib/types';
+import { SYSTEM_MODULES, SystemModule } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -66,6 +68,11 @@ import {
   Pencil,
   UserCheck,
   XCircle,
+  Boxes,
+  Layers,
+  Sliders,
+  CheckCircle2,
+  Sparkles,
 } from 'lucide-react';
 import {
   SUPPORTED_CURRENCIES,
@@ -156,6 +163,12 @@ export default function SuperAdminTenantsPage() {
   // 5. Manage Notices Dialog State
   const [isManageNoticesOpen, setIsManageNoticesOpen] = useState(false);
 
+  // 6. Tenant Modular Feature Assignment State
+  const [isModulesDialogOpen, setIsModulesDialogOpen] = useState(false);
+  const [selectedTenantForModules, setSelectedTenantForModules] = useState<Tenant | null>(null);
+  const [tenantActiveModules, setTenantActiveModules] = useState<string[]>([]);
+  const [isSavingModules, setIsSavingModules] = useState(false);
+
   // Auto-generate slug for newTenantId
   const handleTenantNameChange = (name: string) => {
     setNewTenantName(name);
@@ -181,15 +194,33 @@ export default function SuperAdminTenantsPage() {
 
       let loadedRequests: UserProvisionRequest[] = [];
       try {
-        const userRequestsSnap = await getDocs(
-          query(collection(firestore, 'user_requests'), orderBy('createdAt', 'desc'))
-        );
-        loadedRequests = userRequestsSnap.docs.map((d) => ({
+        // Query without orderBy to eliminate composite index requirement
+        const userRequestsSnap = await getDocs(collection(firestore, 'user_requests'));
+        loadedRequests = (userRequestsSnap.docs.map((d) => ({
           id: d.id,
           ...d.data(),
-        })) as UserProvisionRequest[];
+        })) as UserProvisionRequest[]).sort((a, b) => {
+          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return timeB - timeA;
+        });
       } catch (reqErr) {
-        console.warn('User requests load note:', reqErr);
+        console.warn('Client user requests load note:', reqErr);
+      }
+
+      // If client reading returned 0 or errored (e.g. security rules pending sync), query server API
+      if (loadedRequests.length === 0) {
+        try {
+          const res = await fetch('/api/user-requests');
+          if (res.ok) {
+            const apiData = await res.json();
+            if (apiData.requests && Array.isArray(apiData.requests)) {
+              loadedRequests = apiData.requests;
+            }
+          }
+        } catch (apiErr) {
+          console.warn('Server user requests fallback notice:', apiErr);
+        }
       }
 
       const loadedTenants: Tenant[] = tenantsSnap.docs.map((d) => {
@@ -204,6 +235,9 @@ export default function SuperAdminTenantsPage() {
           expiresAt: data.expiresAt,
           maxProjects: data.maxProjects,
           currency: data.currency || DEFAULT_CURRENCY_CODE,
+          assignedModules: Array.isArray(data.assignedModules) && data.assignedModules.length > 0
+            ? data.assignedModules
+            : ['inventory', 'sales_booking', 'procurement_ledger', 'direct_cashflow', 'operating_expenses', 'export_reporting'],
         } as Tenant;
       });
 
@@ -234,6 +268,31 @@ export default function SuperAdminTenantsPage() {
       loadData();
     }
   }, [isSuperAdmin, firestore]);
+
+  // Real-time live listener for incoming user provisioning requests
+  useEffect(() => {
+    if (!firestore || !isSuperAdmin) return;
+    try {
+      const unsub = onSnapshot(collection(firestore, 'user_requests'), (snapshot) => {
+        if (!snapshot.empty) {
+          const liveRequests = (snapshot.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          })) as UserProvisionRequest[]).sort((a, b) => {
+            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return timeB - timeA;
+          });
+          setUserRequests(liveRequests);
+        }
+      }, (err) => {
+        console.warn('Live user requests listener notice:', err);
+      });
+      return () => unsub();
+    } catch (e) {
+      console.warn('Could not register user requests snapshot:', e);
+    }
+  }, [firestore, isSuperAdmin]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -390,10 +449,19 @@ export default function SuperAdminTenantsPage() {
       // If provisioned from a pending request, mark it as approved
       if (selectedRequestToProvision) {
         try {
+          // 1. Update via server REST API
+          fetch('/api/user-requests', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestId: selectedRequestToProvision.id, status: 'approved' }),
+          }).catch((err) => console.warn('Server patch request note:', err));
+
+          // 2. Update via client Firestore
           await updateDoc(doc(firestore, 'user_requests', selectedRequestToProvision.id), {
             status: 'approved',
             approvedAt: new Date().toISOString(),
-          });
+          }).catch(() => {});
+
           setUserRequests((prev) =>
             prev.map((r) =>
               r.id === selectedRequestToProvision.id ? { ...r, status: 'approved' } : r
@@ -445,10 +513,19 @@ export default function SuperAdminTenantsPage() {
   // Handle rejecting a user request
   const handleRejectRequest = async (requestId: string) => {
     try {
+      // 1. Update via server REST API
+      fetch('/api/user-requests', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId, status: 'rejected' }),
+      }).catch((err) => console.warn('Server patch request note:', err));
+
+      // 2. Update via client Firestore
       await updateDoc(doc(firestore, 'user_requests', requestId), {
         status: 'rejected',
         rejectedAt: new Date().toISOString(),
-      });
+      }).catch(() => {});
+
       setUserRequests((prev) =>
         prev.map((r) => (r.id === requestId ? { ...r, status: 'rejected' } : r))
       );
@@ -458,6 +535,59 @@ export default function SuperAdminTenantsPage() {
       });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Action Failed', description: err.message });
+    }
+  };
+
+  // Modular Feature Allocation Handlers
+  const handleOpenModules = (tenant: Tenant) => {
+    setSelectedTenantForModules(tenant);
+    setTenantActiveModules(
+      tenant.assignedModules || [
+        'inventory',
+        'sales_booking',
+        'procurement_ledger',
+        'direct_cashflow',
+        'operating_expenses',
+        'export_reporting',
+      ]
+    );
+    setIsModulesDialogOpen(true);
+  };
+
+  const handleToggleModule = (moduleId: string) => {
+    setTenantActiveModules((prev) =>
+      prev.includes(moduleId) ? prev.filter((id) => id !== moduleId) : [...prev, moduleId]
+    );
+  };
+
+  const handleSaveModules = async () => {
+    if (!firestore || !selectedTenantForModules) return;
+    setIsSavingModules(true);
+    try {
+      await updateDoc(doc(firestore, 'tenants', selectedTenantForModules.id), {
+        assignedModules: tenantActiveModules,
+        updatedAt: new Date().toISOString(),
+      });
+      setTenants((prev) =>
+        prev.map((t) =>
+          t.id === selectedTenantForModules.id
+            ? { ...t, assignedModules: tenantActiveModules }
+            : t
+        )
+      );
+      toast({
+        title: 'Tenant Modules Updated',
+        description: `Active operational modules updated for ${selectedTenantForModules.name}.`,
+      });
+      setIsModulesDialogOpen(false);
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Update Failed',
+        description: err.message || 'Could not save module configuration.',
+      });
+    } finally {
+      setIsSavingModules(false);
     }
   };
 
@@ -1051,6 +1181,14 @@ export default function SuperAdminTenantsPage() {
                           <Button
                             variant="outline"
                             size="sm"
+                            className="text-xs h-7 gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                            onClick={() => handleOpenModules(t)}
+                          >
+                            <Boxes className="h-3 w-3" /> Modules ({t.assignedModules?.length || 6})
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
                             className="text-xs h-7 gap-1"
                             onClick={() => openEditTenantModal(t)}
                           >
@@ -1072,6 +1210,128 @@ export default function SuperAdminTenantsPage() {
               </Table>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Section: Modular Architecture & Tenant Feature Assignment           */}
+      {/* ------------------------------------------------------------------- */}
+      <Card id="modules" className="border-border shadow-sm">
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Boxes className="h-5 w-5 text-primary" />
+                  Tenant Modular Features & Capabilities Engine
+                </CardTitle>
+                <Badge variant="outline" className="text-xs border-primary/40 text-primary bg-primary/5">
+                  Modular Architecture
+                </Badge>
+              </div>
+              <CardDescription>
+                Assign specific operational modules (CRM, Cashflow, Installments, POs, PDF Reports) to individual tenants based on their subscription tier and bespoke contracts.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-6">
+          {/* System Modules Catalog Showcase */}
+          <div>
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Layers className="h-4 w-4 text-primary" /> System Modules Catalog
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {SYSTEM_MODULES.map((mod) => (
+                <div
+                  key={mod.id}
+                  className="rounded-lg border bg-card/60 p-3.5 space-y-2 hover:border-primary/40 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5 text-primary" />
+                      {mod.name}
+                    </span>
+                    <Badge
+                      variant={mod.status === 'active' ? 'default' : 'secondary'}
+                      className="text-[10px] py-0 px-1.5"
+                    >
+                      {mod.status === 'active' ? 'Operational' : mod.badge || 'Upcoming'}
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {mod.description}
+                  </p>
+                  <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[10px] text-muted-foreground">
+                    <span className="capitalize">Domain: {mod.category}</span>
+                    <span className="font-mono text-[9px]">ID: {mod.id}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Tenant Module Allocations */}
+          <div>
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Sliders className="h-4 w-4 text-primary" /> Tenant Workspace Module Allocations
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {tenants.map((t) => {
+                const assigned = t.assignedModules || [
+                  'inventory',
+                  'sales_booking',
+                  'procurement_ledger',
+                  'direct_cashflow',
+                  'operating_expenses',
+                  'export_reporting',
+                ];
+                return (
+                  <div
+                    key={t.id}
+                    className="rounded-lg border bg-muted/20 p-3.5 flex flex-col justify-between gap-3"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="font-semibold text-xs text-foreground">{t.name}</div>
+                        <Badge variant="outline" className="text-[10px] font-mono">
+                          {t.plan.toUpperCase()}
+                        </Badge>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">Tenant ID: {t.id}</span>
+                      <div className="flex flex-wrap gap-1 mt-2.5">
+                        {assigned.map((modId) => {
+                          const mod = SYSTEM_MODULES.find((m) => m.id === modId);
+                          return (
+                            <span
+                              key={modId}
+                              className="text-[10px] rounded-full bg-primary/10 text-primary px-2 py-0.5 font-medium border border-primary/20"
+                            >
+                              {mod ? mod.name.split(' ')[0] : modId}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t text-xs">
+                      <span className="text-[11px] text-muted-foreground">
+                        {assigned.length} of {SYSTEM_MODULES.length} modules active
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1 border-primary/30 hover:bg-primary/10"
+                        onClick={() => handleOpenModules(t)}
+                      >
+                        <Sliders className="h-3 w-3 text-primary" /> Assign Modules
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -1687,6 +1947,93 @@ export default function SuperAdminTenantsPage() {
               </DialogFooter>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Dialog: Assign Modules to Tenant Workspace                          */}
+      {/* ------------------------------------------------------------------- */}
+      <Dialog open={isModulesDialogOpen} onOpenChange={setIsModulesDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-2">
+              <Boxes className="h-5 w-5" />
+            </div>
+            <DialogTitle>Configure Tenant Modules & Features</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Select which functional modules are provisioned for{' '}
+              <strong>{selectedTenantForModules?.name}</strong> ({selectedTenantForModules?.id}).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto py-2 pr-1">
+            {SYSTEM_MODULES.map((mod) => {
+              const isChecked = tenantActiveModules.includes(mod.id);
+              return (
+                <div
+                  key={mod.id}
+                  onClick={() => handleToggleModule(mod.id)}
+                  className={`flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer select-none ${
+                    isChecked
+                      ? 'border-primary/50 bg-primary/5 shadow-sm'
+                      : 'border-border/60 bg-card hover:border-border'
+                  }`}
+                >
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => handleToggleModule(mod.id)}
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                    />
+                  </div>
+                  <div className="flex-1 space-y-0.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-xs text-foreground">{mod.name}</span>
+                      <Badge
+                        variant={mod.status === 'active' ? 'outline' : 'secondary'}
+                        className="text-[10px] py-0 px-1.5"
+                      >
+                        {mod.status === 'active' ? 'Available' : mod.badge || 'Planned'}
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-snug">
+                      {mod.description}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsModulesDialogOpen(false)}
+              disabled={isSavingModules}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleSaveModules}
+              disabled={isSavingModules}
+              className="gap-1.5"
+            >
+              {isSavingModules ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4" /> Save Module Assignment
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

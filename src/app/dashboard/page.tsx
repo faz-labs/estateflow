@@ -1,7 +1,8 @@
 
 'use client';
 
-import { DollarSign, Briefcase, TrendingUp, TrendingDown, ArrowLeftRight, Banknote, Landmark } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { DollarSign, Briefcase, TrendingUp, TrendingDown, ArrowLeftRight, Banknote, Landmark, Loader2 } from "lucide-react";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { CashflowChart } from "@/components/dashboard/cashflow-chart";
 import { ProjectStatus } from "@/components/dashboard/project-status";
@@ -15,8 +16,16 @@ import { useUserProfile } from "@/hooks/use-user-profile";
 
 
 export default function DashboardPage() {
-  const { formatCompactCurrency: formatCurrency } = useUserProfile();
+  const router = useRouter();
+  const { formatCompactCurrency: formatCurrency, isSuperAdmin, isLoading: isProfileLoading } = useUserProfile();
   const firestore = useFirestore();
+
+  useEffect(() => {
+    if (!isProfileLoading && isSuperAdmin) {
+      router.replace('/dashboard/tenants');
+    }
+  }, [isSuperAdmin, isProfileLoading, router]);
+
   const [stats, setStats] = useState({
     totalRevenue: 0,
     totalInflow: 0,
@@ -36,6 +45,7 @@ export default function DashboardPage() {
   const { data: operatingCosts } = useCollection<OperatingCost>(operatingCostsQuery);
 
   useEffect(() => {
+    if (isSuperAdmin) return;
     const fetchStats = async () => {
       setIsLoading(true);
       try {
@@ -106,6 +116,15 @@ export default function DashboardPage() {
   const planningProjects = projects?.filter(p => p.status === 'Planning').length || 0;
   const grossProfit = stats.totalRevenue - stats.totalExpenses;
   const actualProfit = stats.totalRevenue - (stats.totalExpenses + stats.totalOperatingCost);
+
+  if (isSuperAdmin) {
+    return (
+      <div className="flex h-64 items-center justify-center space-x-2">
+        <Loader2 className="h-5 w-5 animate-spin text-amber-500" />
+        <span className="text-sm text-muted-foreground">Redirecting to Platform Management Console...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

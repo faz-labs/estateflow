@@ -19,6 +19,8 @@ import {
   ShieldCheck,
   Loader2,
   BookOpen,
+  Boxes,
+  UserPlus,
 } from 'lucide-react';
 import { useAuth } from '@/firebase';
 import { signOut } from 'firebase/auth';
@@ -28,7 +30,8 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
-const navItems = [
+// Operational navigation for tenant companies (hidden from platform superadmin)
+const tenantNavItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/dashboard/projects', icon: Briefcase, label: 'Projects' },
   { href: '/dashboard/customers', icon: Users, label: 'Customers' },
@@ -39,6 +42,15 @@ const navItems = [
   { href: '/dashboard/make-payment', icon: Banknote, label: 'Make Payment' },
   { href: '/dashboard/operating-cost', icon: Landmark, label: 'Operating Cost' },
   { href: '/dashboard/export-reports', icon: FileDown, label: 'Export Reports' },
+];
+
+// Platform administration navigation for Super Admin
+const superAdminNavItems = [
+  { href: '/dashboard/tenants', icon: ShieldCheck, label: 'Tenants & Workspaces' },
+  { href: '/dashboard/tenants#requests', icon: UserPlus, label: 'User Access Requests' },
+  { href: '/dashboard/tenants#modules', icon: Boxes, label: 'Modular Features Engine' },
+  { href: '/dashboard/settings', icon: Settings, label: 'Platform Security' },
+  { href: '/dashboard/guide', icon: BookOpen, label: 'Admin Documentation' },
 ];
 
 interface SidebarNavProps {
@@ -74,6 +86,9 @@ export function SidebarNav({ isMobile = false, onNavigate, className }: SidebarN
     onNavigate?.();
   };
 
+  const currentNavItems = isSuperAdmin ? superAdminNavItems : tenantNavItems;
+  const homeHref = isSuperAdmin ? '/dashboard/tenants' : '/dashboard';
+
   return (
     <aside
       className={cn(
@@ -86,9 +101,9 @@ export function SidebarNav({ isMobile = false, onNavigate, className }: SidebarN
       {/* 1. Header (Fixed height h-16) */}
       <div className="flex h-16 shrink-0 items-center border-b px-4 lg:px-6">
         <Link
-          href="/dashboard"
+          href={homeHref}
           prefetch={true}
-          onClick={() => handleLinkClick('/dashboard')}
+          onClick={() => handleLinkClick(homeHref)}
           className="flex items-center gap-2.5 font-semibold group transition-opacity hover:opacity-90"
         >
           <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
@@ -99,7 +114,7 @@ export function SidebarNav({ isMobile = false, onNavigate, className }: SidebarN
               EstateFlow
             </span>
             <span className="text-[10px] text-muted-foreground font-medium tracking-wider uppercase mt-0.5">
-              Real Estate ERP
+              {isSuperAdmin ? 'Platform Admin' : 'Real Estate ERP'}
             </span>
           </div>
         </Link>
@@ -107,31 +122,19 @@ export function SidebarNav({ isMobile = false, onNavigate, className }: SidebarN
 
       {/* 2. Middle Navigation Items (Scrollable when viewport is compact) */}
       <div className="flex-1 overflow-y-auto px-2 lg:px-3 py-3 space-y-1">
-        <nav className="grid items-start text-sm font-medium gap-0.5">
-          {isSuperAdmin && (
-            <Link
-              href="/dashboard/tenants"
-              prefetch={true}
-              onClick={() => handleLinkClick('/dashboard/tenants')}
-              className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-amber-600 dark:text-amber-400 font-semibold transition-all hover:bg-amber-500/15 bg-amber-500/10 border border-amber-500/30 mb-2',
-                (pathname === '/dashboard/tenants' || pendingHref === '/dashboard/tenants') &&
-                  'bg-amber-500/25 text-amber-700 dark:text-amber-300'
-              )}
-            >
-              {pendingHref === '/dashboard/tenants' ? (
-                <Loader2 className="h-4 w-4 animate-spin text-amber-600 dark:text-amber-400" />
-              ) : (
-                <ShieldCheck className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              )}
-              Super Admin
-            </Link>
-          )}
+        {isSuperAdmin && (
+          <div className="px-3 py-1.5 mb-1 rounded-md bg-amber-500/10 border border-amber-500/20 text-[11px] font-semibold text-amber-500 flex items-center gap-1.5">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            <span>Super Administrator Mode</span>
+          </div>
+        )}
 
-          {navItems.map((item) => {
+        <nav className="grid items-start text-sm font-medium gap-0.5">
+          {currentNavItems.map((item) => {
             const isPending = pendingHref === item.href;
             const isActive =
-              pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+              pathname === item.href ||
+              (item.href !== '/dashboard' && !item.href.includes('#') && pathname.startsWith(item.href));
 
             return (
               <Link

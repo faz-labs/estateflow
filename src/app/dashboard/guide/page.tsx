@@ -93,11 +93,10 @@ export default function UserGuidePage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <button
           onClick={() => setActiveTab('customers')}
-          className={`flex flex-col items-start p-3.5 rounded-xl border text-left transition-all ${
-            activeTab === 'customers'
+          className={`flex flex-col items-start p-3.5 rounded-xl border text-left transition-all ${activeTab === 'customers'
               ? 'border-primary bg-primary/10 shadow-sm'
               : 'border-border/60 bg-card hover:border-primary/40 hover:bg-muted/40'
-          }`}
+            }`}
         >
           <Users className="h-5 w-5 text-blue-600 dark:text-blue-400 mb-1.5" />
           <span className="text-xs font-semibold text-foreground">Customer Profiles</span>
@@ -106,11 +105,10 @@ export default function UserGuidePage() {
 
         <button
           onClick={() => setActiveTab('payments')}
-          className={`flex flex-col items-start p-3.5 rounded-xl border text-left transition-all ${
-            activeTab === 'payments'
+          className={`flex flex-col items-start p-3.5 rounded-xl border text-left transition-all ${activeTab === 'payments'
               ? 'border-primary bg-primary/10 shadow-sm'
               : 'border-border/60 bg-card hover:border-primary/40 hover:bg-muted/40'
-          }`}
+            }`}
         >
           <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400 mb-1.5" />
           <span className="text-xs font-semibold text-foreground">Payments</span>
@@ -119,11 +117,10 @@ export default function UserGuidePage() {
 
         <button
           onClick={() => setActiveTab('expenses')}
-          className={`flex flex-col items-start p-3.5 rounded-xl border text-left transition-all ${
-            activeTab === 'expenses'
+          className={`flex flex-col items-start p-3.5 rounded-xl border text-left transition-all ${activeTab === 'expenses'
               ? 'border-primary bg-primary/10 shadow-sm'
               : 'border-border/60 bg-card hover:border-primary/40 hover:bg-muted/40'
-          }`}
+            }`}
         >
           <Receipt className="h-5 w-5 text-amber-600 dark:text-amber-400 mb-1.5" />
           <span className="text-xs font-semibold text-foreground">Expenses & Bills</span>
@@ -132,11 +129,10 @@ export default function UserGuidePage() {
 
         <button
           onClick={() => setActiveTab('projects')}
-          className={`flex flex-col items-start p-3.5 rounded-xl border text-left transition-all ${
-            activeTab === 'projects'
+          className={`flex flex-col items-start p-3.5 rounded-xl border text-left transition-all ${activeTab === 'projects'
               ? 'border-primary bg-primary/10 shadow-sm'
               : 'border-border/60 bg-card hover:border-primary/40 hover:bg-muted/40'
-          }`}
+            }`}
         >
           <Briefcase className="h-5 w-5 text-purple-600 dark:text-purple-400 mb-1.5" />
           <span className="text-xs font-semibold text-foreground">Projects & Flats</span>
@@ -145,11 +141,10 @@ export default function UserGuidePage() {
 
         <button
           onClick={() => setActiveTab('roles')}
-          className={`flex flex-col items-start p-3.5 rounded-xl border text-left transition-all ${
-            activeTab === 'roles'
+          className={`flex flex-col items-start p-3.5 rounded-xl border text-left transition-all ${activeTab === 'roles'
               ? 'border-primary bg-primary/10 shadow-sm'
               : 'border-border/60 bg-card hover:border-primary/40 hover:bg-muted/40'
-          }`}
+            }`}
         >
           <ShieldCheck className="h-5 w-5 text-rose-600 dark:text-rose-400 mb-1.5" />
           <span className="text-xs font-semibold text-foreground">Roles & Access</span>
@@ -158,11 +153,10 @@ export default function UserGuidePage() {
 
         <button
           onClick={() => setActiveTab('settings')}
-          className={`flex flex-col items-start p-3.5 rounded-xl border text-left transition-all ${
-            activeTab === 'settings'
+          className={`flex flex-col items-start p-3.5 rounded-xl border text-left transition-all ${activeTab === 'settings'
               ? 'border-primary bg-primary/10 shadow-sm'
               : 'border-border/60 bg-card hover:border-primary/40 hover:bg-muted/40'
-          }`}
+            }`}
         >
           <Settings className="h-5 w-5 text-slate-600 dark:text-slate-400 mb-1.5" />
           <span className="text-xs font-semibold text-foreground">Settings & Logo</span>
@@ -692,7 +686,7 @@ export default function UserGuidePage() {
                   <ul className="text-xs space-y-1.5 text-muted-foreground list-disc pl-4">
                     <li><strong>Assigned Currency:</strong> Configured for your tenant (USD, BDT, GBP, EUR, CHF, etc.) with automatic currency symbols on all receipts and tables.</li>
                     <li><strong>Request Additional Users:</strong> In Settings, click <em>Request User Access</em> to submit an email and role request directly to the system administrator.</li>
-                    <li><strong>Password Resets:</strong> Secure password recovery handled via dedicated enterprise Mailcow SMTP.</li>
+                    <li><strong>Password Resets:</strong> Secure password recovery handled via dedicated enterprise Remtozied IT SMTP.</li>
                   </ul>
                 </div>
               </div>

@@ -82,8 +82,8 @@ export function TenantGuard({ children }: { children: ReactNode }) {
           <CardContent className="space-y-4">
             <p className="text-xs text-muted-foreground text-center">
               Please contact the platform administrator at{' '}
-              <a href="mailto:admin@remotizedit.online" className="font-semibold text-primary underline">
-                admin@remotizedit.online
+              <a href="mailto:support@remotizedit.online" className="font-semibold text-primary underline">
+                support@remotizedit.online
               </a>{' '}
               to reactivate your company account.
             </p>
