@@ -21,8 +21,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect, useMemo } from 'react';
 import type { Vendor, Expense, OutflowTransaction, Project, ExpenseItem } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import { Ban, MoreHorizontal, Search, Pencil, Trash2, Download, Eye, CreditCard } from 'lucide-react';
+import { Ban, MoreHorizontal, Search, Pencil, Trash2, Download, Eye, CreditCard, User, Building2, Landmark, Banknote, FileText, Calendar, Check, ArrowRight, Sparkles, Receipt, Wallet, CheckCircle2, Loader2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -116,6 +115,10 @@ export default function MakePaymentPage() {
 
   const vendorId = form.watch('vendorId');
   const expenseId = form.watch('expenseId');
+  const amountToPay = form.watch('amountToPay');
+  const paymentMethod = form.watch('paymentMethod');
+
+  const selectedVendor = useMemo(() => vendors?.find(v => v.id === vendorId), [vendors, vendorId]);
 
   // Fetch unpaid expenses for the selected vendor
   useEffect(() => {
@@ -452,18 +455,34 @@ export default function MakePaymentPage() {
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Expense Selection</h3>
+              {/* Step 1: Vendor & Expense Allocation */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-border/50">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold ring-1 ring-primary/20">
+                      1
+                    </span>
+                    <h3 className="text-sm font-semibold tracking-wide text-foreground uppercase">
+                      Vendor & Payable Bill
+                    </h3>
+                  </div>
+                  <span className="text-xs text-muted-foreground hidden sm:inline">
+                    Select a vendor to view and disburse outstanding expense bills
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5 items-start">
                   <FormField
                     control={form.control}
                     name="vendorId"
                     render={({ field }) => (
                       <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Vendor</FormLabel>
+                        <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <User className="h-3.5 w-3.5 text-primary" /> Vendor / Contractor <span className="text-rose-500">*</span>
+                        </FormLabel>
                         <FormControl>
                           <Combobox
-                            className="h-10 w-full"
+                            className="h-11 w-full rounded-xl border-border/80 shadow-xs transition-all hover:border-primary/50"
                             options={vendors?.map(v => ({ value: v.id, label: v.vendorName })) || []}
                             value={field.value}
                             onChange={field.onChange}
@@ -482,10 +501,12 @@ export default function MakePaymentPage() {
                     name="expenseId"
                     render={({ field }) => (
                       <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Expense</FormLabel>
+                        <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <Receipt className="h-3.5 w-3.5 text-primary" /> Unpaid Expense Bill <span className="text-rose-500">*</span>
+                        </FormLabel>
                         <FormControl>
                           <Combobox
-                            className="h-10 w-full"
+                            className="h-11 w-full rounded-xl border-border/80 shadow-xs transition-all hover:border-primary/50"
                             options={unpaidExpenses.map(e => ({ value: e.id, label: `${e.expenseId} - Due: ${formatCurrency(e.price - e.paidAmount)}` }))}
                             value={field.value}
                             onChange={field.onChange}
@@ -500,71 +521,279 @@ export default function MakePaymentPage() {
                     )}
                   />
                 </div>
-                <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Payment Details</h3>
-                     {selectedExpense && (
-                         <div className="grid grid-cols-2 gap-4 rounded-lg bg-muted p-4">
-                            <div>
-                                <p className="text-sm text-muted-foreground">Total Expense</p>
-                                <p className="font-bold">{formatCurrency(selectedExpense.price)}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-muted-foreground">Amount Paid</p>
-                                <p className="font-bold">{formatCurrency(selectedExpense.paidAmount)}</p>
-                            </div>
-                            <div className="col-span-2">
-                                <p className="text-sm text-muted-foreground">Current Due</p>
-                                <p className="font-bold text-lg text-red-600">{formatCurrency(dueAmount)}</p>
-                            </div>
-                         </div>
-                     )}
-                </div>
+
+                {selectedExpense && (
+                  <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-muted/20 to-card p-4 sm:p-5 shadow-xs backdrop-blur-md space-y-4 animate-in fade-in-50 duration-300">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-border/40">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="font-semibold text-xs px-2.5 py-0.5 rounded-full border-primary/30 text-primary bg-primary/5">
+                          Bill Reference: {selectedExpense.expenseId}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground font-medium">
+                          Status: <strong className="text-foreground">{selectedExpense.status}</strong>
+                        </span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                      <div className="rounded-xl bg-background/90 border border-border/70 p-3.5 shadow-2xs">
+                        <p className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                          <Receipt className="h-3.5 w-3.5 text-muted-foreground" /> Total Bill Amount
+                        </p>
+                        <p className="text-xl font-bold tracking-tight text-foreground mt-1">
+                          {formatCurrency(selectedExpense.price)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-emerald-500/5 border border-emerald-500/20 p-3.5 shadow-2xs">
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Amount Already Paid
+                        </p>
+                        <p className="text-xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-1">
+                          {formatCurrency(selectedExpense.paidAmount)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-rose-500/5 border border-rose-500/20 p-3.5 shadow-2xs flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1.5">
+                            <Banknote className="h-3.5 w-3.5" /> Current Due
+                          </p>
+                          <p className="text-xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-1">
+                            {formatCurrency(dueAmount)}
+                          </p>
+                        </div>
+                        {dueAmount > 0 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-3 text-xs font-semibold border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-100/50 dark:hover:bg-rose-950/60 rounded-lg transition-all"
+                            onClick={() => {
+                              form.setValue('amountToPay', dueAmount, { shouldValidate: true });
+                            }}
+                          >
+                            Pay Due
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <Separator />
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-                 <FormField
-                    control={form.control}
-                    name="amountToPay"
-                    render={({ field }) => (
-                        <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center truncate">Amount to Pay ({currencySymbol})</FormLabel>
-                        <FormControl>
-                            <Input type="number" placeholder="0" className="h-10" {...field} disabled={!selectedExpense} />
-                        </FormControl>
-                        <FormMessage />
-                        </FormItem>
-                    )}
+
+              {/* Step 2: Remittance Amount & Method */}
+              <div className="space-y-5">
+                <div className="flex items-center justify-between pb-2 border-b border-border/50">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold ring-1 ring-primary/20">
+                      2
+                    </span>
+                    <h3 className="text-sm font-semibold tracking-wide text-foreground uppercase">
+                      Disbursement Amount & Channel
+                    </h3>
+                  </div>
+                  <span className="text-xs text-muted-foreground hidden sm:inline">
+                    Specify payment sum and transmission method
+                  </span>
+                </div>
+
+                {/* Hero Financial Amount Input */}
+                <FormField
+                  control={form.control}
+                  name="amountToPay"
+                  render={({ field }) => (
+                    <FormItem className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <FormLabel className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <Banknote className="h-3.5 w-3.5 text-primary" /> Amount to Disburse <span className="text-rose-500">*</span>
+                        </FormLabel>
+                        {selectedExpense && dueAmount > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            Bill Due: <strong className="text-rose-600 dark:text-rose-400 font-semibold">{formatCurrency(dueAmount)}</strong>
+                          </span>
+                        )}
+                      </div>
+                      <FormControl>
+                        <div className={`relative flex items-center rounded-2xl border-2 transition-all shadow-xs overflow-hidden ${
+                          !selectedExpense ? 'opacity-60 bg-muted/20 border-border/60' : 'border-border/80 bg-background/80 focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10'
+                        }`}>
+                          <div className="flex items-center justify-center px-4 bg-muted/50 border-r border-border/70 text-foreground font-bold text-lg select-none min-w-[3.5rem] h-14">
+                            {currencySymbol}
+                          </div>
+                          <Input
+                            type="number"
+                            placeholder="0.00"
+                            disabled={!selectedExpense}
+                            className="h-14 text-2xl font-bold tracking-tight text-foreground placeholder:text-muted-foreground/30 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-4 bg-transparent"
+                            value={field.value === 0 ? '' : field.value}
+                            onChange={(e) => {
+                              const val = e.target.value === '' ? 0 : Number(e.target.value);
+                              field.onChange(val);
+                            }}
+                          />
+                        </div>
+                      </FormControl>
+
+                      {/* Fast Fill Chips */}
+                      {selectedExpense && dueAmount > 0 && (
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          <span className="text-xs text-muted-foreground font-medium">Quick Fill:</span>
+                          <button
+                            type="button"
+                            onClick={() => form.setValue('amountToPay', dueAmount, { shouldValidate: true })}
+                            className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-primary/30 bg-primary/5 hover:bg-primary/15 text-primary transition-colors cursor-pointer"
+                          >
+                            Full Due ({formatCurrency(dueAmount)})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => form.setValue('amountToPay', Math.round(dueAmount * 0.5), { shouldValidate: true })}
+                            className="px-2.5 py-1 text-xs font-medium rounded-lg border border-border/70 bg-muted/40 hover:bg-muted/80 text-foreground transition-colors cursor-pointer"
+                          >
+                            50% ({formatCurrency(Math.round(dueAmount * 0.5))})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => form.setValue('amountToPay', Math.round(dueAmount * 0.25), { shouldValidate: true })}
+                            className="px-2.5 py-1 text-xs font-medium rounded-lg border border-border/70 bg-muted/40 hover:bg-muted/80 text-foreground transition-colors cursor-pointer"
+                          >
+                            25% ({formatCurrency(Math.round(dueAmount * 0.25))})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => form.setValue('amountToPay', 0, { shouldValidate: true })}
+                            className="px-2.5 py-1 text-xs font-medium rounded-lg border border-border/70 bg-muted/30 hover:bg-muted/60 text-muted-foreground transition-colors cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-                 <FormField
+
+                {/* Interactive Payment Method Cards */}
+                <FormField
+                  control={form.control}
+                  name="paymentMethod"
+                  render={({ field }) => (
+                    <FormItem className="space-y-2">
+                      <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                        <CreditCard className="h-3.5 w-3.5 text-primary" /> Payment Channel <span className="text-rose-500">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          {[
+                            {
+                              id: 'Cash',
+                              title: 'Cash',
+                              desc: 'Direct currency disbursement',
+                              icon: Banknote,
+                              color: 'text-emerald-600 dark:text-emerald-400',
+                              bg: 'bg-emerald-500/10',
+                            },
+                            {
+                              id: 'Cheque',
+                              title: 'Cheque / Pay Order',
+                              desc: 'Bank cheque or commercial draft',
+                              icon: FileText,
+                              color: 'text-blue-600 dark:text-blue-400',
+                              bg: 'bg-blue-500/10',
+                            },
+                            {
+                              id: 'Bank Transfer',
+                              title: 'Bank Transfer',
+                              desc: 'Wire, EFT, or direct deposit',
+                              icon: Landmark,
+                              color: 'text-purple-600 dark:text-purple-400',
+                              bg: 'bg-purple-500/10',
+                            },
+                          ].map((method) => {
+                            const isSelected = field.value === method.id;
+                            const IconComponent = method.icon;
+                            return (
+                              <button
+                                key={method.id}
+                                type="button"
+                                disabled={!selectedExpense}
+                                onClick={() => field.onChange(method.id)}
+                                className={`relative flex items-start gap-3.5 p-3.5 rounded-xl border text-left transition-all ${
+                                  !selectedExpense
+                                    ? 'opacity-60 cursor-not-allowed border-border/50 bg-muted/20'
+                                    : isSelected
+                                    ? 'border-primary bg-primary/5 ring-2 ring-primary/20 shadow-xs cursor-pointer'
+                                    : 'border-border/70 bg-card/60 hover:border-primary/40 hover:bg-muted/30 cursor-pointer'
+                                }`}
+                              >
+                                <div className={`h-9 w-9 rounded-lg ${method.bg} ${method.color} flex items-center justify-center shrink-0 mt-0.5`}>
+                                  <IconComponent className="h-4 w-4" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-sm font-semibold text-foreground truncate">{method.title}</p>
+                                    {isSelected && (
+                                      <span className="flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground shrink-0">
+                                        <Check className="h-2.5 w-2.5 stroke-[3]" />
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{method.desc}</p>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Step 3: Date & Disbursement Reference */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-border/50">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold ring-1 ring-primary/20">
+                      3
+                    </span>
+                    <h3 className="text-sm font-semibold tracking-wide text-foreground uppercase">
+                      Execution Date & Reference
+                    </h3>
+                  </div>
+                  <span className="text-xs text-muted-foreground hidden sm:inline">
+                    Disbursement voucher number and accounting date
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5 items-start">
+                  <FormField
                     control={form.control}
                     name="paymentDate"
                     render={({ field }) => (
-                        <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Payment Date</FormLabel>
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <Calendar className="h-3.5 w-3.5 text-primary" /> Payment Date <span className="text-rose-500">*</span>
+                        </FormLabel>
                         <FormControl>
-                            <Input type="date" className="h-10" {...field} disabled={!selectedExpense} />
+                          <Input type="date" className="h-11 rounded-xl border-border/80 shadow-xs" {...field} disabled={!selectedExpense} />
                         </FormControl>
                         <FormMessage />
-                        </FormItem>
+                      </FormItem>
                     )}
-                />
-                 <FormField
+                  />
+                  <FormField
                     control={form.control}
-                    name="paymentMethod"
+                    name="reference"
                     render={({ field }) => (
                       <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Payment Method</FormLabel>
+                        <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <FileText className="h-3.5 w-3.5 text-primary" /> Reference / Note (Optional)
+                        </FormLabel>
                         <FormControl>
-                          <Combobox
-                            className="h-10 w-full"
-                            options={[
-                              { value: 'Cash', label: 'Cash' },
-                              { value: 'Cheque', label: 'Cheque' },
-                              { value: 'Bank Transfer', label: 'Bank Transfer' },
-                            ]}
-                            value={field.value}
-                            onChange={field.onChange}
-                            placeholder="Select a method"
+                          <Input
+                            placeholder="Optional (e.g., Cheque No., Voucher #, Bank Ref)"
+                            className="h-11 rounded-xl border-border/80 shadow-xs"
+                            {...field}
                             disabled={!selectedExpense}
                           />
                         </FormControl>
@@ -572,25 +801,42 @@ export default function MakePaymentPage() {
                       </FormItem>
                     )}
                   />
+                </div>
               </div>
-              <FormField
-                control={form.control}
-                name="reference"
-                render={({ field }) => (
-                    <FormItem className="flex flex-col justify-start space-y-2">
-                    <FormLabel className="h-5 flex items-center">Reference / Note</FormLabel>
-                    <FormControl>
-                        <Input placeholder="Optional (e.g., Cheque No. or Purpose)" className="h-10" {...field} disabled={!selectedExpense} />
-                    </FormControl>
-                    <FormMessage />
-                    </FormItem>
-                )}
-                />
 
-              <div className="flex justify-end pt-4">
-                <Button type="submit" disabled={isViewer || form.formState.isSubmitting || !selectedExpense}>
-                  {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Recording...' : 'Record Payment'}
-                </Button>
+              {/* Action Bar & Live Summary */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-border/50">
+                <div className="text-xs text-muted-foreground flex items-center gap-2">
+                  {amountToPay > 0 && selectedVendor ? (
+                    <span className="flex items-center gap-1.5 text-foreground font-medium bg-muted/50 px-3 py-1.5 rounded-lg border border-border/50">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      Ready to disburse <strong className="text-primary">{formatCurrency(amountToPay)}</strong> to <strong>{selectedVendor.vendorName}</strong> via <strong>{paymentMethod}</strong>
+                    </span>
+                  ) : (
+                    <span>Select an unpaid bill and enter payment amount to disburse funds</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <Button
+                    type="submit"
+                    size="lg"
+                    disabled={isViewer || form.formState.isSubmitting || !selectedExpense}
+                    className="w-full sm:w-auto h-12 px-8 font-semibold rounded-xl shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all bg-primary hover:bg-primary/90 text-primary-foreground flex items-center justify-center gap-2"
+                  >
+                    {form.formState.isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> Disbursing Payment...
+                      </>
+                    ) : isViewer ? (
+                      'Read-Only (Viewer Access)'
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-4 w-4" /> Disburse Payment
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </form>
           </Form>

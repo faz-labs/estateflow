@@ -95,7 +95,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Ban, Printer, MoreHorizontal, Pencil, Trash2, Eye, FileDown, Search, Download, Save, Loader2, Banknote } from 'lucide-react';
+import { Ban, Printer, MoreHorizontal, Pencil, Trash2, Eye, FileDown, Search, Download, Save, Loader2, Banknote, User, Building2, Home, Calendar, FileText, CheckCircle2, Sparkles, Landmark, Check, ArrowRight, CreditCard } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Receipt } from '@/components/dashboard/receipt';
 import { EditPaymentForm } from '@/components/dashboard/payments/edit-payment-form';
@@ -205,6 +205,12 @@ export default function AddPaymentPage() {
   const projectId = form.watch('projectId');
   const flatId = form.watch('flatId');
   const paymentPurpose = form.watch('paymentPurpose');
+  const amount = form.watch('amount');
+  const paymentMethod = form.watch('paymentMethod');
+
+  const selectedCustomer = useMemo(() => customers?.find(c => c.id === customerId), [customers, customerId]);
+  const selectedProject = useMemo(() => projectsForCustomer.find(p => p.id === projectId), [projectsForCustomer, projectId]);
+  const selectedFlat = useMemo(() => flatsForProject.find(f => f.id === flatId), [flatsForProject, flatId]);
 
   // Fetch recent transactions for the log
   const fetchRecentTransactions = async () => {
@@ -763,16 +769,31 @@ export default function AddPaymentPage() {
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              
+              {/* Step 1: Customer & Property Target */}
               <div className="space-y-4">
-                <h3 className="text-lg font-medium text-primary">Payment Details</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                <div className="flex items-center justify-between pb-2 border-b border-border/50">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold ring-1 ring-primary/20">
+                      1
+                    </span>
+                    <h3 className="text-sm font-semibold tracking-wide text-foreground uppercase">
+                      Customer & Property Allocation
+                    </h3>
+                  </div>
+                  <span className="text-xs text-muted-foreground hidden sm:inline">
+                    Select customer to load purchased flats and financial ledger
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-5 items-start">
                   <FormField
                     control={form.control}
                     name="customerId"
                     render={({ field }) => (
                       <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Customer</FormLabel>
+                        <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <User className="h-3.5 w-3.5 text-primary" /> Customer <span className="text-rose-500">*</span>
+                        </FormLabel>
                         <FormControl>
                           <Combobox
                             options={customers?.map(c => ({ value: c.id, label: c.fullName })) || []}
@@ -782,7 +803,7 @@ export default function AddPaymentPage() {
                             searchPlaceholder="Search customers..."
                             emptyText="No customer found."
                             disabled={customersLoading}
-                            className="h-10 w-full"
+                            className="h-11 w-full rounded-xl border-border/80 shadow-xs transition-all hover:border-primary/50"
                           />
                         </FormControl>
                         <FormMessage />
@@ -794,7 +815,9 @@ export default function AddPaymentPage() {
                     name="projectId"
                     render={({ field }) => (
                       <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Project</FormLabel>
+                        <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <Building2 className="h-3.5 w-3.5 text-primary" /> Project <span className="text-rose-500">*</span>
+                        </FormLabel>
                         <FormControl>
                           <Combobox
                             options={projectsForCustomer.map(p => ({ value: p.id, label: p.projectName }))}
@@ -804,7 +827,7 @@ export default function AddPaymentPage() {
                             searchPlaceholder="Search projects..."
                             emptyText="No projects for this customer."
                             disabled={!customerId || projectsForCustomer.length === 0}
-                            className="h-10 w-full"
+                            className="h-11 w-full rounded-xl border-border/80 shadow-xs transition-all hover:border-primary/50"
                           />
                         </FormControl>
                         <FormMessage />
@@ -816,7 +839,9 @@ export default function AddPaymentPage() {
                     name="flatId"
                     render={({ field }) => (
                       <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Flat</FormLabel>
+                        <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <Home className="h-3.5 w-3.5 text-primary" /> Flat / Unit <span className="text-rose-500">*</span>
+                        </FormLabel>
                         <FormControl>
                           <Combobox
                             options={flatsForProject.map(f => ({ value: f.id, label: f.flatNumber }))}
@@ -826,7 +851,7 @@ export default function AddPaymentPage() {
                             searchPlaceholder="Search flats..."
                             emptyText="No flats found."
                             disabled={!projectId || flatsForProject.length === 0}
-                            className="h-10 w-full"
+                            className="h-11 w-full rounded-xl border-border/80 shadow-xs transition-all hover:border-primary/50"
                           />
                         </FormControl>
                         <FormMessage />
@@ -836,43 +861,48 @@ export default function AddPaymentPage() {
                 </div>
 
                 {customerFinancials && (
-                  <div className="rounded-xl border bg-muted/40 backdrop-blur-sm p-4 space-y-3 animate-in fade-in-50 duration-200">
-                    <div className="flex items-center justify-between">
+                  <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-muted/20 to-card p-4 sm:p-5 shadow-xs backdrop-blur-md space-y-4 animate-in fade-in-50 duration-300">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-border/40">
                       <div className="flex items-center gap-2">
-                        <Badge variant={customerFinancials.isFlatSpecific ? "default" : "secondary"}>
+                        <Badge variant={customerFinancials.isFlatSpecific ? "default" : "secondary"} className="font-semibold text-xs px-2.5 py-0.5 rounded-full">
                           {customerFinancials.isFlatSpecific ? "Flat Breakdown" : "Overall Customer Financials"}
                         </Badge>
                         {customerFinancials.isFlatSpecific && customerFinancials.flatNumber && (
                           <span className="text-xs text-muted-foreground font-medium">
-                            Flat: {customerFinancials.flatNumber} {customerFinancials.projectName ? `• ${customerFinancials.projectName}` : ''}
+                            Unit {customerFinancials.flatNumber} {customerFinancials.projectName ? `• ${customerFinancials.projectName}` : ''}
                           </span>
                         )}
                       </div>
                       {isCalculatingFinancials && (
                         <span className="flex items-center gap-1.5 text-xs text-primary font-medium">
-                          <Loader2 className="h-3 w-3 animate-spin" /> Updating...
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Recalculating ledger...
                         </span>
                       )}
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div className="rounded-lg bg-background/80 border p-3">
-                        <p className="text-xs text-muted-foreground font-medium">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                      <div className="rounded-xl bg-background/90 border border-border/70 p-3.5 shadow-2xs">
+                        <p className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
                           {customerFinancials.isFlatSpecific ? "Flat Total Price" : "Total Agreed Value"}
                         </p>
-                        <p className="text-xl font-bold tracking-tight text-foreground mt-0.5">
+                        <p className="text-xl font-bold tracking-tight text-foreground mt-1">
                           {formatCurrency(customerFinancials.totalPrice)}
                         </p>
                       </div>
-                      <div className="rounded-lg bg-background/80 border p-3">
-                        <p className="text-xs text-muted-foreground font-medium">Total Paid</p>
-                        <p className="text-xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-0.5">
+                      <div className="rounded-xl bg-emerald-500/5 border border-emerald-500/20 p-3.5 shadow-2xs">
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Total Inflows Paid
+                        </p>
+                        <p className="text-xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-1">
                           {formatCurrency(customerFinancials.totalPaid)}
                         </p>
                       </div>
-                      <div className="rounded-lg bg-background/80 border p-3 flex items-center justify-between">
+                      <div className="rounded-xl bg-rose-500/5 border border-rose-500/20 p-3.5 shadow-2xs flex items-center justify-between gap-2">
                         <div>
-                          <p className="text-xs text-muted-foreground font-medium">Current Due</p>
-                          <p className="text-xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-0.5">
+                          <p className="text-xs text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1.5">
+                            <Banknote className="h-3.5 w-3.5" /> Current Due
+                          </p>
+                          <p className="text-xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-1">
                             {formatCurrency(customerFinancials.totalDue)}
                           </p>
                         </div>
@@ -881,9 +911,9 @@ export default function AddPaymentPage() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="h-8 text-xs font-semibold border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                            className="h-8 px-3 text-xs font-semibold border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-100/50 dark:hover:bg-rose-950/60 rounded-lg transition-all"
                             onClick={() => {
-                              form.setValue('amount', customerFinancials.totalDue);
+                              form.setValue('amount', customerFinancials.totalDue, { shouldValidate: true });
                             }}
                           >
                             Pay Due
@@ -895,120 +925,266 @@ export default function AddPaymentPage() {
                 )}
               </div>
 
-              <Separator />
-
-                <div className="grid md:grid-cols-2 gap-8 items-start">
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-primary">Purpose of Payment</h3>
-                    <FormField
-                        control={form.control}
-                        name="paymentPurpose"
-                        render={({ field }) => (
-                          <FormItem className="space-y-3">
-                            <FormControl>
-                              <RadioGroup
-                                onValueChange={field.onChange}
-                                defaultValue={field.value}
-                                className="flex flex-col space-y-2"
-                              >
-                                <FormItem className="flex items-center space-x-3 space-y-0">
-                                  <FormControl>
-                                    <RadioGroupItem value="Booking Money" />
-                                  </FormControl>
-                                  <FormLabel className="font-normal">Booking Money</FormLabel>
-                                </FormItem>
-                                <FormItem className="flex items-center space-x-3 space-y-0">
-                                  <FormControl>
-                                    <RadioGroupItem value="Installment" />
-                                  </FormControl>
-                                  <FormLabel className="font-normal">Installment</FormLabel>
-                                </FormItem>
-                                <FormItem className="flex items-center space-x-3 space-y-0">
-                                  <FormControl>
-                                    <RadioGroupItem value="Other" />
-                                  </FormControl>
-                                  <FormLabel className="font-normal">Other</FormLabel>
-                                </FormItem>
-                              </RadioGroup>
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      {paymentPurpose === 'Other' && (
-                          <FormField
-                              control={form.control}
-                              name="otherPurpose"
-                              render={({ field }) => (
-                                  <FormItem className="flex flex-col justify-start space-y-2">
-                                      <FormLabel className="h-5 flex items-center">Please Specify</FormLabel>
-                                      <FormControl>
-                                          <Input placeholder="e.g., Parking Fee" className="h-10" {...field} />
-                                      </FormControl>
-                                      <FormMessage />
-                                  </FormItem>
-                              )}
-                          />
-                      )}
+              {/* Step 2: Payment Execution & Method */}
+              <div className="space-y-5">
+                <div className="flex items-center justify-between pb-2 border-b border-border/50">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold ring-1 ring-primary/20">
+                      2
+                    </span>
+                    <h3 className="text-sm font-semibold tracking-wide text-foreground uppercase">
+                      Payment Amount & Method
+                    </h3>
                   </div>
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-primary">Amount & Method</h3>
-                    <FormField
-                      control={form.control}
-                      name="amount"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-col justify-start space-y-2">
-                          <FormLabel className="h-5 flex items-center">Amount ({currencySymbol})</FormLabel>
-                          <FormControl>
-                            <Input type="number" placeholder="50000" className="h-10" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="paymentMethod"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-col justify-start space-y-2">
-                          <FormLabel className="h-5 flex items-center">Payment Method</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            defaultValue={field.value}
-                          >
-                            <FormControl>
-                              <SelectTrigger className="h-10">
-                                <SelectValue placeholder="Select a payment method" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="Cash">Cash</SelectItem>
-                              <SelectItem value="Cheque">Cheque</SelectItem>
-                              <SelectItem value="Bank Transfer">
-                                Bank Transfer
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                  <span className="text-xs text-muted-foreground hidden sm:inline">
+                    Specify remittance amount and transaction channel
+                  </span>
                 </div>
 
-              <Separator />
+                {/* Hero Financial Amount Input */}
+                <FormField
+                  control={form.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <FormLabel className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <Banknote className="h-3.5 w-3.5 text-primary" /> Amount to Collect <span className="text-rose-500">*</span>
+                        </FormLabel>
+                        {customerFinancials && customerFinancials.totalDue > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            Outstanding: <strong className="text-rose-600 dark:text-rose-400 font-semibold">{formatCurrency(customerFinancials.totalDue)}</strong>
+                          </span>
+                        )}
+                      </div>
+                      <FormControl>
+                        <div className="relative flex items-center rounded-2xl border-2 border-border/80 bg-background/80 focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all shadow-xs overflow-hidden">
+                          <div className="flex items-center justify-center px-4 bg-muted/50 border-r border-border/70 text-foreground font-bold text-lg select-none min-w-[3.5rem] h-14">
+                            {currencySymbol}
+                          </div>
+                          <Input
+                            type="number"
+                            placeholder="0.00"
+                            className="h-14 text-2xl font-bold tracking-tight text-foreground placeholder:text-muted-foreground/30 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-4 bg-transparent"
+                            value={field.value === 0 ? '' : field.value}
+                            onChange={(e) => {
+                              const val = e.target.value === '' ? 0 : Number(e.target.value);
+                              field.onChange(val);
+                            }}
+                          />
+                        </div>
+                      </FormControl>
+                      
+                      {/* Fast Fill Chips */}
+                      {customerFinancials && customerFinancials.totalDue > 0 && (
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          <span className="text-xs text-muted-foreground font-medium">Quick Fill:</span>
+                          <button
+                            type="button"
+                            onClick={() => form.setValue('amount', customerFinancials.totalDue, { shouldValidate: true })}
+                            className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-primary/30 bg-primary/5 hover:bg-primary/15 text-primary transition-colors cursor-pointer"
+                          >
+                            Full Due ({formatCurrency(customerFinancials.totalDue)})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => form.setValue('amount', Math.round(customerFinancials.totalDue * 0.5), { shouldValidate: true })}
+                            className="px-2.5 py-1 text-xs font-medium rounded-lg border border-border/70 bg-muted/40 hover:bg-muted/80 text-foreground transition-colors cursor-pointer"
+                          >
+                            50% ({formatCurrency(Math.round(customerFinancials.totalDue * 0.5))})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => form.setValue('amount', Math.round(customerFinancials.totalDue * 0.25), { shouldValidate: true })}
+                            className="px-2.5 py-1 text-xs font-medium rounded-lg border border-border/70 bg-muted/40 hover:bg-muted/80 text-foreground transition-colors cursor-pointer"
+                          >
+                            25% ({formatCurrency(Math.round(customerFinancials.totalDue * 0.25))})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => form.setValue('amount', 0, { shouldValidate: true })}
+                            className="px-2.5 py-1 text-xs font-medium rounded-lg border border-border/70 bg-muted/30 hover:bg-muted/60 text-muted-foreground transition-colors cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
+                {/* Interactive Payment Method Cards */}
+                <FormField
+                  control={form.control}
+                  name="paymentMethod"
+                  render={({ field }) => (
+                    <FormItem className="space-y-2">
+                      <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                        <CreditCard className="h-3.5 w-3.5 text-primary" /> Payment Method <span className="text-rose-500">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          {[
+                            {
+                              id: 'Cash',
+                              title: 'Cash',
+                              desc: 'Physical currency receipt',
+                              icon: Banknote,
+                              color: 'text-emerald-600 dark:text-emerald-400',
+                              bg: 'bg-emerald-500/10',
+                            },
+                            {
+                              id: 'Cheque',
+                              title: 'Cheque / Pay Order',
+                              desc: 'Bank cheque or draft',
+                              icon: FileText,
+                              color: 'text-blue-600 dark:text-blue-400',
+                              bg: 'bg-blue-500/10',
+                            },
+                            {
+                              id: 'Bank Transfer',
+                              title: 'Bank Transfer',
+                              desc: 'Direct wire, EFT, or online',
+                              icon: Landmark,
+                              color: 'text-purple-600 dark:text-purple-400',
+                              bg: 'bg-purple-500/10',
+                            },
+                          ].map((method) => {
+                            const isSelected = field.value === method.id;
+                            const IconComponent = method.icon;
+                            return (
+                              <button
+                                key={method.id}
+                                type="button"
+                                onClick={() => field.onChange(method.id)}
+                                className={`relative flex items-start gap-3.5 p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'border-primary bg-primary/5 ring-2 ring-primary/20 shadow-xs'
+                                    : 'border-border/70 bg-card/60 hover:border-primary/40 hover:bg-muted/30'
+                                }`}
+                              >
+                                <div className={`h-9 w-9 rounded-lg ${method.bg} ${method.color} flex items-center justify-center shrink-0 mt-0.5`}>
+                                  <IconComponent className="h-4 w-4" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-sm font-semibold text-foreground truncate">{method.title}</p>
+                                    {isSelected && (
+                                      <span className="flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground shrink-0">
+                                        <Check className="h-2.5 w-2.5 stroke-[3]" />
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{method.desc}</p>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Interactive Payment Purpose Selector */}
+                <FormField
+                  control={form.control}
+                  name="paymentPurpose"
+                  render={({ field }) => (
+                    <FormItem className="space-y-2">
+                      <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                        <Sparkles className="h-3.5 w-3.5 text-primary" /> Purpose of Payment <span className="text-rose-500">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          {[
+                            { id: 'Booking Money', label: 'Booking Money', desc: 'Initial token / advance' },
+                            { id: 'Installment', label: 'Installment', desc: 'Scheduled installment' },
+                            { id: 'Other', label: 'Other Purpose', desc: 'Ad-hoc or custom fee' },
+                          ].map((purpose) => {
+                            const isSelected = field.value === purpose.id;
+                            return (
+                              <button
+                                key={purpose.id}
+                                type="button"
+                                onClick={() => field.onChange(purpose.id)}
+                                className={`flex flex-col p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'border-primary bg-primary/5 ring-1 ring-primary/25 shadow-xs'
+                                    : 'border-border/70 bg-card/60 hover:border-primary/40 hover:bg-muted/30'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between w-full">
+                                  <span className="text-sm font-semibold text-foreground">{purpose.label}</span>
+                                  {isSelected && (
+                                    <span className="flex items-center justify-center h-4 w-4 rounded-full bg-primary text-primary-foreground">
+                                      <Check className="h-2.5 w-2.5 stroke-[3]" />
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-xs text-muted-foreground mt-0.5">{purpose.desc}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {paymentPurpose === 'Other' && (
+                  <FormField
+                    control={form.control}
+                    name="otherPurpose"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col justify-start space-y-2 animate-in fade-in-50 slide-in-from-top-2 duration-200">
+                        <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <FileText className="h-3.5 w-3.5 text-primary" /> Specify Purpose <span className="text-rose-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., Parking Allocation, Utility Connection, Registration Fee"
+                            className="h-11 rounded-xl border-border/80 shadow-xs"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </div>
+
+              {/* Step 3: Date & Reference Tracking */}
               <div className="space-y-4">
-                <h3 className="text-lg font-medium text-primary">Additional Info</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                <div className="flex items-center justify-between pb-2 border-b border-border/50">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold ring-1 ring-primary/20">
+                      3
+                    </span>
+                    <h3 className="text-sm font-semibold tracking-wide text-foreground uppercase">
+                      Execution Date & Reference
+                    </h3>
+                  </div>
+                  <span className="text-xs text-muted-foreground hidden sm:inline">
+                    Accounting transaction date and instrument number
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5 items-start">
                   <FormField
                     control={form.control}
                     name="date"
                     render={({ field }) => (
                       <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Payment Date</FormLabel>
+                        <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <Calendar className="h-3.5 w-3.5 text-primary" /> Payment Date <span className="text-rose-500">*</span>
+                        </FormLabel>
                         <FormControl>
-                          <Input type="date" className="h-10" {...field} />
+                          <Input type="date" className="h-11 rounded-xl border-border/80 shadow-xs" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1019,11 +1195,13 @@ export default function AddPaymentPage() {
                     name="reference"
                     render={({ field }) => (
                       <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Reference</FormLabel>
+                        <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <FileText className="h-3.5 w-3.5 text-primary" /> Reference / Instrument # (Optional)
+                        </FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="Optional (e.g., Cheque No.)"
-                            className="h-10"
+                            placeholder="e.g., Cheque No. 48291, Deposit Slip #, Txn ID"
+                            className="h-11 rounded-xl border-border/80 shadow-xs"
                             {...field}
                           />
                         </FormControl>
@@ -1034,14 +1212,39 @@ export default function AddPaymentPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end pt-4 gap-2">
-                <Button type="submit" disabled={isViewer || form.formState.isSubmitting}>
-                  {isViewer
-                    ? 'Read-Only (Viewer Access)'
-                    : form.formState.isSubmitting
-                    ? 'Recording...'
-                    : 'Record Payment'}
-                </Button>
+              {/* Action Bar & Live Summary */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-border/50">
+                <div className="text-xs text-muted-foreground flex items-center gap-2">
+                  {amount > 0 && selectedCustomer ? (
+                    <span className="flex items-center gap-1.5 text-foreground font-medium bg-muted/50 px-3 py-1.5 rounded-lg border border-border/50">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      Ready to record <strong className="text-primary">{formatCurrency(amount)}</strong> for <strong>{selectedCustomer.fullName}</strong> ({selectedFlat ? `Flat ${selectedFlat.flatNumber}` : 'Flat'}) via <strong>{paymentMethod}</strong>
+                    </span>
+                  ) : (
+                    <span>Fill in the details above to record customer inflow remittance</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <Button
+                    type="submit"
+                    size="lg"
+                    disabled={isViewer || form.formState.isSubmitting}
+                    className="w-full sm:w-auto h-12 px-8 font-semibold rounded-xl shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all bg-primary hover:bg-primary/90 text-primary-foreground flex items-center justify-center gap-2"
+                  >
+                    {form.formState.isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> Recording Payment...
+                      </>
+                    ) : isViewer ? (
+                      'Read-Only (Viewer Access)'
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-4 w-4" /> Record Payment
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </form>
           </Form>
