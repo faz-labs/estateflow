@@ -22,7 +22,7 @@ import { useState, useEffect, useMemo } from 'react';
 import type { Vendor, Expense, OutflowTransaction, Project, ExpenseItem } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Ban, MoreHorizontal, Search, Pencil, Trash2, Download, Eye } from 'lucide-react';
+import { Ban, MoreHorizontal, Search, Pencil, Trash2, Download, Eye, CreditCard } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -435,10 +435,19 @@ export default function MakePaymentPage() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Make Vendor Payment</CardTitle>
-          <CardDescription>Record a cash outflow for an existing expense.</CardDescription>
+      <Card className="border-border/60 shadow-sm">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="h-9 w-9 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-600 dark:text-rose-400">
+              <CreditCard className="h-5 w-5" />
+            </div>
+            <div>
+              <CardTitle className="text-lg font-bold">Make Vendor Payment</CardTitle>
+              <CardDescription className="text-xs">
+                Record a cash outflow remittance against an existing contractor or supplier expense.
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <Form {...form}>

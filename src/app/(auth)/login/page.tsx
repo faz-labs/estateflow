@@ -108,7 +108,7 @@ export default function LoginPage() {
           document.cookie = 'auth_session=true; path=/; max-age=2592000; SameSite=Lax';
         }
         setIsRedirecting(true);
-        window.location.assign('/dashboard/tenants');
+        router.replace('/dashboard/tenants');
         return;
       }
 
@@ -178,7 +178,7 @@ export default function LoginPage() {
         document.cookie = 'auth_session=true; path=/; max-age=2592000; SameSite=Lax';
       }
       setIsRedirecting(true);
-      window.location.assign('/dashboard');
+      router.replace('/dashboard');
       return;
 
     } catch (error: any) {
@@ -387,7 +387,7 @@ export default function LoginPage() {
         onSuccess={() => {
           setIsForceChangeOpen(false);
           toast({ title: 'Welcome!', description: 'Password updated. Redirecting to your dashboard...' });
-          window.location.assign('/dashboard');
+          router.replace('/dashboard');
         }}
       />
     </div>

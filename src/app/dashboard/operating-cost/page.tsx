@@ -25,7 +25,7 @@ import { useState, useMemo, useCallback } from 'react';
 import type { OperatingCost, OperatingCostItem } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { PlusCircle, Search, Ban, MoreHorizontal, Pencil, Trash2, Eye } from 'lucide-react';
+import { PlusCircle, Search, Ban, MoreHorizontal, Pencil, Trash2, Eye, Landmark } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -211,58 +211,130 @@ export default function OperatingCostPage() {
 
   return (
     <div className="space-y-6">
-        <Card>
-            <CardHeader>
-                <CardTitle>Add Operating Cost</CardTitle>
-                <CardDescription>Record a general business expense.</CardDescription>
+        <Card className="border-border/60 shadow-sm">
+            <CardHeader className="pb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                    <Landmark className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg font-bold">Add Operating Cost</CardTitle>
+                    <CardDescription className="text-xs">
+                      Record administrative overheads, office leases, corporate utility bills, or staff salaries.
+                    </CardDescription>
+                  </div>
+                </div>
             </CardHeader>
             <CardContent>
                 <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <FormField control={form.control} name="date" render={({ field }) => (
-                                <FormItem><FormLabel>Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
-                            )}/>
-                            <FormItem className="flex flex-col">
-                                <FormLabel>Item</FormLabel>
-                                <div className="flex items-center gap-2">
-                                    <FormField control={form.control} name="itemId" render={({ field }) => (
-                                        <div className="flex-grow">
-                                            <Combobox
-                                                options={costItems?.map(i => ({ value: i.id, label: i.name })) || []}
-                                                value={field.value} onChange={field.onChange}
-                                                placeholder="Select an item" searchPlaceholder="Search items..." emptyText="No items found."
-                                                disabled={itemsLoading}
-                                            />
+                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+                        {/* Row 1: Date, Item (with + button), Amount (3 Symmetrical Columns) */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                            <FormField
+                                control={form.control}
+                                name="date"
+                                render={({ field }) => (
+                                    <FormItem className="flex flex-col justify-start space-y-2">
+                                        <FormLabel className="h-5 flex items-center">Date</FormLabel>
+                                        <FormControl>
+                                            <Input type="date" className="h-10" {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
+                            <FormField
+                                control={form.control}
+                                name="itemId"
+                                render={({ field }) => (
+                                    <FormItem className="flex flex-col justify-start space-y-2">
+                                        <FormLabel className="h-5 flex items-center">Expense Category / Item</FormLabel>
+                                        <div className="flex items-center gap-1.5 w-full">
+                                            <FormControl className="flex-1 min-w-0">
+                                                <Combobox
+                                                    className="h-10 w-full"
+                                                    options={costItems?.map(i => ({ value: i.id, label: i.name })) || []}
+                                                    value={field.value}
+                                                    onChange={field.onChange}
+                                                    placeholder="Select an item"
+                                                    searchPlaceholder="Search items..."
+                                                    emptyText="No items found."
+                                                    disabled={itemsLoading}
+                                                />
+                                            </FormControl>
+                                            <Dialog open={isAddItemDialogOpen} onOpenChange={setIsAddItemDialogOpen}>
+                                                <DialogTrigger asChild>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="icon"
+                                                        className="h-10 w-10 shrink-0 border-dashed hover:border-primary hover:text-primary"
+                                                        title="Add new category"
+                                                    >
+                                                        <PlusCircle className="h-4 w-4" />
+                                                    </Button>
+                                                </DialogTrigger>
+                                                <DialogContent className="sm:max-w-[425px]">
+                                                    <DialogHeader><DialogTitle>Add New Category Item</DialogTitle></DialogHeader>
+                                                    <AddOperatingCostItemForm setDialogOpen={setIsAddItemDialogOpen} />
+                                                </DialogContent>
+                                            </Dialog>
                                         </div>
-                                    )}/>
-                                    <Dialog open={isAddItemDialogOpen} onOpenChange={setIsAddItemDialogOpen}>
-                                        <DialogTrigger asChild>
-                                            <Button type="button" variant="outline" size="icon"><PlusCircle className="h-4 w-4" /></Button>
-                                        </DialogTrigger>
-                                        <DialogContent className="sm:max-w-[425px]">
-                                            <DialogHeader><DialogTitle>Add New Item</DialogTitle></DialogHeader>
-                                            <AddOperatingCostItemForm setDialogOpen={setIsAddItemDialogOpen} />
-                                        </DialogContent>
-                                    </Dialog>
-                                </div>
-                                <FormMessage>{form.formState.errors.itemId?.message}</FormMessage>
-                            </FormItem>
-                             <FormField control={form.control} name="amount" render={({ field }) => (
-                                <FormItem><FormLabel>Amount ({currencySymbol})</FormLabel><FormControl><Input type="number" placeholder="5000" {...field} /></FormControl><FormMessage /></FormItem>
-                            )}/>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
+                            <FormField
+                                control={form.control}
+                                name="amount"
+                                render={({ field }) => (
+                                    <FormItem className="flex flex-col justify-start space-y-2">
+                                        <FormLabel className="h-5 flex items-center">Amount ({currencySymbol})</FormLabel>
+                                        <FormControl>
+                                            <Input type="number" min="0" placeholder="0" className="h-10" {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                             <FormField control={form.control} name="description" render={({ field }) => (
-                                <FormItem><FormLabel>Description</FormLabel><FormControl><Textarea placeholder="e.g., Monthly office rent" {...field} /></FormControl><FormMessage /></FormItem>
-                            )}/>
-                            <FormField control={form.control} name="reference" render={({ field }) => (
-                                <FormItem><FormLabel>Reference</FormLabel><FormControl><Input placeholder="e.g., Invoice #123" {...field} /></FormControl><FormMessage /></FormItem>
-                            )}/>
+
+                        {/* Row 2: Reference & Description (3 Symmetrical Columns: Reference 1 col, Description 2 cols) */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                            <FormField
+                                control={form.control}
+                                name="reference"
+                                render={({ field }) => (
+                                    <FormItem className="flex flex-col justify-start space-y-2">
+                                        <FormLabel className="h-5 flex items-center">Reference / Voucher #</FormLabel>
+                                        <FormControl>
+                                            <Input placeholder="e.g., Invoice #1029 or Cheque #44" className="h-10" {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
+                            <FormField
+                                control={form.control}
+                                name="description"
+                                render={({ field }) => (
+                                    <FormItem className="flex flex-col justify-start space-y-2 md:col-span-2">
+                                        <FormLabel className="h-5 flex items-center">Description / Memo</FormLabel>
+                                        <FormControl>
+                                            <Input placeholder="e.g., Monthly executive office lease for September" className="h-10" {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
                         </div>
+
                         <div className="flex justify-end pt-2">
-                            <Button type="submit" disabled={isViewer || form.formState.isSubmitting}>
-                                {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Recording...' : 'Record Cost'}
+                            <Button type="submit" disabled={isViewer || form.formState.isSubmitting} className="h-10 px-6 font-semibold shadow-sm">
+                                {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Recording...' : 'Record Operating Cost'}
                             </Button>
                         </div>
                     </form>
@@ -284,7 +356,7 @@ export default function OperatingCostPage() {
                         <Input 
                             type="search" 
                             placeholder="Search by item, description..."
-                            className="pl-8"
+                            className="pl-8 h-10"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />

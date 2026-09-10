@@ -95,7 +95,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Ban, Printer, MoreHorizontal, Pencil, Trash2, Eye, FileDown, Search, Download, Save, Loader2 } from 'lucide-react';
+import { Ban, Printer, MoreHorizontal, Pencil, Trash2, Eye, FileDown, Search, Download, Save, Loader2, Banknote } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Receipt } from '@/components/dashboard/receipt';
 import { EditPaymentForm } from '@/components/dashboard/payments/edit-payment-form';
@@ -226,15 +226,21 @@ export default function AddPaymentPage() {
       const customersMap = new Map(customersSnap.docs.map(d => [d.id, d.data() as Customer]));
       const tenantProjectIds = new Set(projectsSnap.docs.map(d => d.id));
       
-      // Fetch all flats from tenant's projects
+      // Fetch all flats from tenant's projects in parallel
       const allFlatsMap = new Map<string, Flat>();
-      for (const project of projectsMap.values()) {
-        const flatsQuery = query(collection(firestore, `projects/${project.id}/flats`));
-        const flatsSnap = await getDocs(flatsQuery);
-        flatsSnap.forEach(doc => {
-          allFlatsMap.set(doc.id, doc.data() as Flat);
-        });
-      }
+      await Promise.all(
+        Array.from(projectsMap.values()).map(async (project) => {
+          try {
+            const flatsQuery = query(collection(firestore, `projects/${project.id}/flats`));
+            const flatsSnap = await getDocs(flatsQuery);
+            flatsSnap.forEach(doc => {
+              allFlatsMap.set(doc.id, doc.data() as Flat);
+            });
+          } catch (err) {
+            console.warn(`Could not fetch flats for project ${project.id}:`, err);
+          }
+        })
+      );
 
       // 2. Fetch inflow transactions without where clause to eliminate collectionGroup index requirement
       const inflowsQuery = query(
@@ -456,27 +462,6 @@ export default function AddPaymentPage() {
     }
     fetchProjectData();
   }, [customerId, projectId, firestore, form, tenantId]);
-  
-  const getNextReceiptId = async (): Promise<string> => {
-    const counterRef = doc(firestore, 'counters', 'receipt');
-    try {
-        const newCurrent = await runTransaction(firestore, async (transaction) => {
-            const counterDoc = await transaction.get(counterRef);
-            if (!counterDoc.exists()) {
-                // Initialize counter if it doesn't exist
-                transaction.set(counterRef, { current: 1200 });
-                return 1200;
-            }
-            const newCurrent = (counterDoc.data() as Counter).current + 1;
-            transaction.update(counterRef, { current: newCurrent });
-            return newCurrent;
-        });
-        return newCurrent.toString();
-    } catch (error) {
-        console.error("Transaction failed: ", error);
-        throw new Error("Could not generate receipt ID.");
-    }
-  };
 
 
   async function onSubmit(data: AddPaymentFormValues) {
@@ -490,8 +475,7 @@ export default function AddPaymentPage() {
     }
 
     try {
-        const receiptId = await getNextReceiptId();
-        
+        const counterRef = doc(firestore, 'counters', 'receipt');
         const inflowCollection = collection(
             firestore,
             'projects',
@@ -499,6 +483,41 @@ export default function AddPaymentPage() {
             'inflowTransactions'
         );
         const newInflowRef = doc(inflowCollection);
+
+        // 1. Atomically generate sequential receipt ID and write payment in a single roundtrip
+        const receiptId = await runTransaction(firestore, async (transaction) => {
+            const counterDoc = await transaction.get(counterRef);
+            let nextNum = 1200;
+            if (!counterDoc.exists()) {
+                transaction.set(counterRef, { current: 1200 });
+            } else {
+                nextNum = (counterDoc.data() as Counter).current + 1;
+                transaction.update(counterRef, { current: nextNum });
+            }
+
+            const paymentDoc: InflowTransaction = {
+                id: newInflowRef.id,
+                receiptId: nextNum.toString(),
+                projectId: data.projectId,
+                flatId: data.flatId,
+                customerId: data.customerId,
+                amount: data.amount,
+                paymentMethod: data.paymentMethod,
+                paymentType: data.paymentPurpose === 'Booking Money' ? 'Booking' : 'Installment',
+                paymentPurpose: data.paymentPurpose,
+                otherPurpose: data.otherPurpose,
+                reference: data.reference,
+                date: new Date(data.date).toISOString(),
+                tenantId: tenantId || 'default_workspace',
+            };
+
+            transaction.set(newInflowRef, paymentDoc);
+            return nextNum.toString();
+        });
+
+        const customer = customers?.find(c => c.id === data.customerId);
+        const project = projectsForCustomer?.find(p => p.id === data.projectId);
+        const flat = flatsForProject?.find(f => f.id === data.flatId);
 
         const newPayment: InflowTransaction = {
             id: newInflowRef.id,
@@ -516,13 +535,17 @@ export default function AddPaymentPage() {
             tenantId: tenantId || 'default_workspace',
         };
 
-        await runTransaction(firestore, async (transaction) => {
-            transaction.set(newInflowRef, newPayment);
-        });
-        
-        const customer = customers?.find(c => c.id === data.customerId);
-        const project = projectsForCustomer?.find(p => p.id === data.projectId);
-        const flat = flatsForProject?.find(f => f.id === data.flatId);
+        const enrichedPayment: EnrichedTransaction = {
+            ...newPayment,
+            customerName: customer?.fullName || 'N/A',
+            projectName: project?.projectName || 'N/A',
+            flatNumber: flat?.flatNumber || 'N/A',
+            customer,
+            project,
+        };
+
+        // 2. Optimistically update recent transactions table immediately
+        setRecentTransactions(prev => prev ? [enrichedPayment, ...prev] : [enrichedPayment]);
         
         toast({
             title: 'Payment Recorded',
@@ -567,14 +590,6 @@ export default function AddPaymentPage() {
         }
 
         if (customer && project && flat) {
-            const enrichedPayment = {
-                ...newPayment,
-                customerName: customer.fullName,
-                projectName: project.projectName,
-                flatNumber: flat.flatNumber,
-                customer,
-                project,
-            };
             setSelectedPayment(enrichedPayment);
             setIsViewDialogOpen(true);
         }
@@ -587,6 +602,7 @@ export default function AddPaymentPage() {
             date: new Date().toISOString().split('T')[0],
         });
         
+        // Background refresh without blocking UI
         fetchRecentTransactions();
 
     } catch (error: any) {
@@ -730,12 +746,19 @@ export default function AddPaymentPage() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Add Payment</CardTitle>
-          <CardDescription>
-            Record a new cash inflow from a customer.
-          </CardDescription>
+      <Card className="border-border/60 shadow-sm">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="h-9 w-9 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <Banknote className="h-5 w-5" />
+            </div>
+            <div>
+              <CardTitle className="text-lg font-bold">Add Customer Payment</CardTitle>
+              <CardDescription className="text-xs">
+                Record a new installment, booking advance, or milestone cash inflow from a customer.
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <Form {...form}>

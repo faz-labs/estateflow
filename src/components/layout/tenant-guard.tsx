@@ -41,13 +41,13 @@ export function TenantGuard({ children }: { children: ReactNode }) {
     router.push('/login');
   };
 
-  // 1. Initial Authentication & Profile Loading State
-  if (isUserLoading || isLoading) {
+  // 1. Initial Authentication Loading State (only before user identity is resolved)
+  if (isUserLoading && !user) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-xs text-muted-foreground">Verifying authentication...</p>
+          <p className="text-xs text-muted-foreground">Verifying session...</p>
         </div>
       </div>
     );

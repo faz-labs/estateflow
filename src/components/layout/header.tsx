@@ -24,14 +24,38 @@ import { useAuth, useUser } from '@/firebase';
 import { signOut } from 'firebase/auth';
 import { NotificationBell } from './notification-bell';
 
+const ROUTE_TITLES: Record<string, string> = {
+  '/dashboard': 'Executive Dashboard',
+  '/dashboard/sales': 'Sales Contracts',
+  '/dashboard/sales/add': 'New Sale Agreement',
+  '/dashboard/add-payment': 'Add Customer Payment',
+  '/dashboard/make-payment': 'Make Vendor Payment',
+  '/dashboard/expense': 'Project Expenses',
+  '/dashboard/operating-cost': 'Operating Costs & Overheads',
+  '/dashboard/projects': 'Project Portfolios',
+  '/dashboard/customers': 'Customer CRM & Profiles',
+  '/dashboard/vendors': 'Vendors & Supplier Ledgers',
+  '/dashboard/export-reports': 'Financial Audit & Reports',
+  '/dashboard/settings': 'Company Settings & Currency',
+  '/dashboard/tenants': 'Tenant Organizations',
+  '/dashboard/guide': 'User Manual & Knowledge Base',
+};
+
 const getTitleFromPathname = (pathname: string) => {
-  if (pathname === '/dashboard') return 'Dashboard';
+  if (ROUTE_TITLES[pathname]) {
+    return ROUTE_TITLES[pathname];
+  }
+  if (pathname.startsWith('/dashboard/customers/')) return 'Customer Financial Profile';
+  if (pathname.startsWith('/dashboard/vendors/')) return 'Vendor Ledger Profile';
+  if (pathname.startsWith('/dashboard/sales/')) return 'Sale Contract Details';
+  if (pathname.startsWith('/project/')) return 'Project Workspace';
+
   const parts = pathname.split('/').filter(Boolean);
   if (parts.length > 1) {
-    if (parts[1] === 'vendors') return 'Vendors/Bills';
-    if (parts[1] === 'guide') return 'User Manual & Knowledge Base';
-    const title = parts[1].replace(/-/g, ' ');
-    return title.charAt(0).toUpperCase() + title.slice(1);
+    return parts[1]
+      .split('-')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
   }
   return 'Dashboard';
 };
@@ -53,22 +77,24 @@ export function Header() {
   };
 
   return (
-    <header className="flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 sticky top-0 z-30">
-      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetTrigger asChild>
-          <Button variant="outline" size="icon" className="shrink-0 md:hidden">
-            <Menu className="h-5 w-5" />
-            <span className="sr-only">Toggle navigation menu</span>
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="flex flex-col p-0 w-72">
-          <SidebarNav isMobile onNavigate={() => setMobileOpen(false)} />
-        </SheetContent>
-      </Sheet>
+    <header className="flex h-16 items-center justify-between gap-4 border-b bg-background px-4 md:px-6 sticky top-0 z-30">
+      <div className="flex items-center gap-3 min-w-0">
+        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+          <SheetTrigger asChild>
+            <Button variant="outline" size="icon" className="shrink-0 md:hidden">
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Toggle navigation menu</span>
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="flex flex-col p-0 w-72">
+            <SidebarNav isMobile onNavigate={() => setMobileOpen(false)} />
+          </SheetContent>
+        </Sheet>
 
-      <h1 className="text-xl font-semibold md:text-2xl truncate">{title}</h1>
+        <h1 className="text-lg md:text-xl font-bold tracking-tight text-foreground whitespace-nowrap">{title}</h1>
+      </div>
 
-      <div className="flex w-full items-center gap-3 md:ml-auto md:gap-3 lg:gap-4 justify-end">
+      <div className="flex items-center gap-3 md:gap-4 justify-end shrink-0">
         {/* Quick User Guide Button */}
         <Link href="/dashboard/guide" title="User Manual & Knowledge Base">
           <Button

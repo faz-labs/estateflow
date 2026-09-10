@@ -26,7 +26,7 @@ import type { Project, Vendor, ExpenseItem, Expense, Counter } from '@/lib/types
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { PlusCircle, Search, Ban, MoreHorizontal, Pencil, Trash2, Eye, Download } from 'lucide-react';
+import { PlusCircle, Search, Ban, MoreHorizontal, Pencil, Trash2, Eye, Download, Receipt } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -415,43 +415,34 @@ export default function AddExpensePage() {
 
   return (
     <div className="space-y-6">
-        <Card>
-        <CardHeader>
-            <CardTitle>Add New Expense</CardTitle>
-            <CardDescription>Record a new project expense. Payments are handled separately.</CardDescription>
+        <Card className="border-border/60 shadow-sm">
+        <CardHeader className="pb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                <Receipt className="h-5 w-5" />
+              </div>
+              <div>
+                <CardTitle className="text-lg font-bold">Add New Project Expense</CardTitle>
+                <CardDescription className="text-xs">
+                  Record contractor procurement, building materials, or civil work expenses against a project.
+                </CardDescription>
+              </div>
+            </div>
         </CardHeader>
         <CardContent>
             <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Details</h3>
-                    <FormField
-                    control={form.control}
-                    name="vendorId"
-                    render={({ field }) => (
-                        <FormItem className="flex flex-col">
-                        <FormLabel>Vendor</FormLabel>
-                        <Combobox
-                            options={vendors?.map(v => ({ value: v.id, label: v.vendorName })) || []}
-                            value={field.value}
-                            onChange={field.onChange}
-                            placeholder="Select a vendor"
-                            searchPlaceholder="Search vendors..."
-                            emptyText="No vendors found."
-                            disabled={vendorsLoading}
-                        />
-                        <FormMessage />
-                        </FormItem>
-                    )}
-                    />
-                    <FormField
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+                {/* Row 1: Project, Vendor, Date (3 Symmetrical Columns) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                  <FormField
                     control={form.control}
                     name="projectId"
                     render={({ field }) => (
-                        <FormItem className="flex flex-col">
-                        <FormLabel>Project</FormLabel>
-                        <Combobox
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Project</FormLabel>
+                        <FormControl>
+                          <Combobox
+                            className="h-10 w-full"
                             options={projects?.map(p => ({ value: p.id, label: p.projectName })) || []}
                             value={field.value}
                             onChange={field.onChange}
@@ -459,116 +450,149 @@ export default function AddExpensePage() {
                             searchPlaceholder="Search projects..."
                             emptyText="No projects found."
                             disabled={projectsLoading}
-                        />
+                          />
+                        </FormControl>
                         <FormMessage />
-                        </FormItem>
+                      </FormItem>
                     )}
-                    />
-                    <FormField
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="vendorId"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Vendor / Contractor</FormLabel>
+                        <FormControl>
+                          <Combobox
+                            className="h-10 w-full"
+                            options={vendors?.map(v => ({ value: v.id, label: v.vendorName })) || []}
+                            value={field.value}
+                            onChange={field.onChange}
+                            placeholder="Select a vendor"
+                            searchPlaceholder="Search vendors..."
+                            emptyText="No vendors found."
+                            disabled={vendorsLoading}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
                     control={form.control}
                     name="date"
                     render={({ field }) => (
-                        <FormItem>
-                        <FormLabel>Expense Date</FormLabel>
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Expense Date</FormLabel>
                         <FormControl>
-                            <Input type="date" {...field} />
+                          <Input type="date" className="h-10" {...field} />
                         </FormControl>
                         <FormMessage />
-                        </FormItem>
+                      </FormItem>
                     )}
-                    />
+                  />
                 </div>
 
-                <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Itemization</h3>
-                    <FormItem className="flex flex-col">
-                    <FormLabel>Item</FormLabel>
-                    <div className="flex items-center gap-2">
-                        <FormField
-                        control={form.control}
-                        name="itemId"
-                        render={({ field }) => (
-                            <div className="flex-grow">
+                {/* Row 2: Item with Quick Add, Quantity, Total Price (3 Symmetrical Columns) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                  <FormField
+                    control={form.control}
+                    name="itemId"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Expense Item</FormLabel>
+                        <div className="flex items-center gap-1.5 w-full">
+                          <FormControl className="flex-1 min-w-0">
                             <Combobox
-                                options={expenseItems?.map(i => ({ value: i.id, label: i.name })) || []}
-                                value={field.value}
-                                onChange={field.onChange}
-                                placeholder="Select an item"
-                                searchPlaceholder="Search items..."
-                                emptyText="No items found."
-                                disabled={itemsLoading}
+                              className="h-10 w-full"
+                              options={expenseItems?.map(i => ({ value: i.id, label: i.name })) || []}
+                              value={field.value}
+                              onChange={field.onChange}
+                              placeholder="Select an item"
+                              searchPlaceholder="Search items..."
+                              emptyText="No items found."
+                              disabled={itemsLoading}
                             />
-                            </div>
-                        )}
-                        />
-                        <Dialog open={isAddItemDialogOpen} onOpenChange={setIsAddItemDialogOpen}>
-                        <DialogTrigger asChild>
-                            <Button type="button" variant="outline" size="icon">
-                            <PlusCircle className="h-4 w-4" />
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[425px]">
-                            <DialogHeader>
-                            <DialogTitle>Add New Expense Item</DialogTitle>
-                            </DialogHeader>
-                            <AddItemForm setDialogOpen={setIsAddItemDialogOpen} />
-                        </DialogContent>
-                        </Dialog>
-                    </div>
-                    <FormMessage>{form.formState.errors.itemId?.message}</FormMessage>
-                    </FormItem>
+                          </FormControl>
+                          <Dialog open={isAddItemDialogOpen} onOpenChange={setIsAddItemDialogOpen}>
+                            <DialogTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                className="h-10 w-10 shrink-0 border-dashed hover:border-primary hover:text-primary"
+                                title="Add new item type"
+                              >
+                                <PlusCircle className="h-4 w-4" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-[425px]">
+                              <DialogHeader>
+                                <DialogTitle>Add New Expense Item</DialogTitle>
+                              </DialogHeader>
+                              <AddItemForm setDialogOpen={setIsAddItemDialogOpen} />
+                            </DialogContent>
+                          </Dialog>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                    <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                        control={form.control}
-                        name="quantity"
-                        render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>Quantity</FormLabel>
-                            <FormControl>
-                            <Input type="number" placeholder="1" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="price"
-                        render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>Total Price ({currencySymbol})</FormLabel>
-                            <FormControl>
-                            <Input type="number" placeholder="5000" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                        )}
-                    />
-                    </div>
-                </div>
+                  <FormField
+                    control={form.control}
+                    name="quantity"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Quantity</FormLabel>
+                        <FormControl>
+                          <Input type="number" min="1" placeholder="1" className="h-10" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="price"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col justify-start space-y-2">
+                        <FormLabel className="h-5 flex items-center">Total Price ({currencySymbol})</FormLabel>
+                        <FormControl>
+                          <Input type="number" min="0" placeholder="0" className="h-10" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
 
-                <Separator />
-                
+                {/* Row 3: Description / Memo */}
                 <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                    <FormItem>
-                    <FormLabel>Description</FormLabel>
-                    <FormControl>
-                        <Textarea placeholder="Add any extra details about the expense..." {...field} />
-                    </FormControl>
-                    <FormMessage />
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col justify-start space-y-2">
+                      <FormLabel className="h-5 flex items-center">Description / Memo</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Optional details (e.g., Foundation cement bags delivery batch #4)"
+                          className="h-10"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
                     </FormItem>
-                )}
+                  )}
                 />
 
-                <div className="flex justify-end pt-4">
-                <Button type="submit" disabled={isViewer || form.formState.isSubmitting}>
+                <div className="flex justify-end pt-2">
+                  <Button type="submit" disabled={isViewer || form.formState.isSubmitting} className="h-10 px-6 font-semibold shadow-sm">
                     {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Recording...' : 'Record Expense'}
-                </Button>
+                  </Button>
                 </div>
             </form>
             </Form>
@@ -591,7 +615,7 @@ export default function AddExpensePage() {
                             <Input 
                                 type="search" 
                                 placeholder="Search by ID, vendor, project..."
-                                className="pl-8 sm:w-full lg:w-[300px]"
+                                className="pl-8 sm:w-full lg:w-[300px] h-10"
                                 value={searchQuery}
                                 onChange={(e) => {
                                     setSearchQuery(e.target.value);
@@ -599,7 +623,7 @@ export default function AddExpensePage() {
                                 }}
                             />
                         </div>
-                        <Button variant="outline" onClick={handleExport} className="w-full sm:w-auto">
+                        <Button variant="outline" onClick={handleExport} className="w-full sm:w-auto h-10">
                             <Download className="mr-2 h-4 w-4" />
                             Export
                         </Button>
