@@ -18,6 +18,7 @@ import { useFirestore, setDocumentNonBlocking } from '@/firebase';
 import { collection, doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useUserProfile } from '@/hooks/use-user-profile';
+import { User, Phone, Mail, MapPin, CreditCard, CheckCircle2, Loader2 } from 'lucide-react';
 
 const customerFormSchema = z.object({
   fullName: z.string().min(2, {
@@ -96,77 +97,108 @@ export function AddCustomerForm({ setDialogOpen }: AddCustomerFormProps) {
 
   return (
     <Form {...form}>
-       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <FormField
-            control={form.control}
-            name="fullName"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Full Name</FormLabel>
-                <FormControl>
-                  <Input placeholder="E.g., John Doe" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="mobile"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Mobile</FormLabel>
-                <FormControl>
-                  <Input placeholder="E.g., 01712345678" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Email Address (Optional - for payment receipts)</FormLabel>
-                <FormControl>
-                  <Input type="email" placeholder="E.g., customer@example.com" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+            <FormField
+              control={form.control}
+              name="fullName"
+              render={({ field }) => (
+                <FormItem className="flex flex-col justify-start space-y-1.5">
+                  <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                    <User className="h-3.5 w-3.5 text-primary" /> Full Legal Name <span className="text-rose-500">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input placeholder="E.g., John Doe" className="h-11 rounded-xl border-border/80 shadow-xs px-3.5" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="mobile"
+              render={({ field }) => (
+                <FormItem className="flex flex-col justify-start space-y-1.5">
+                  <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                    <Phone className="h-3.5 w-3.5 text-primary" /> Mobile Number <span className="text-rose-500">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input placeholder="E.g., 01712345678" className="h-11 rounded-xl border-border/80 shadow-xs px-3.5" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem className="flex flex-col justify-start space-y-1.5">
+                  <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                    <Mail className="h-3.5 w-3.5 text-primary" /> Email Address (For receipts)
+                  </FormLabel>
+                  <FormControl>
+                    <Input type="email" placeholder="E.g., customer@example.com" className="h-11 rounded-xl border-border/80 shadow-xs px-3.5" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="nidNumber"
+              render={({ field }) => (
+                <FormItem className="flex flex-col justify-start space-y-1.5">
+                  <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                    <CreditCard className="h-3.5 w-3.5 text-primary" /> National ID (NID) <span className="text-rose-500">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input placeholder="Enter National ID number" className="h-11 rounded-xl border-border/80 shadow-xs px-3.5" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
           <FormField
             control={form.control}
             name="address"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Address</FormLabel>
+              <FormItem className="flex flex-col justify-start space-y-1.5">
+                <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                  <MapPin className="h-3.5 w-3.5 text-primary" /> Permanent / Present Address <span className="text-rose-500">*</span>
+                </FormLabel>
                 <FormControl>
-                  <Textarea placeholder="Enter full address" {...field} />
+                  <Textarea placeholder="Enter full mailing address..." className="rounded-xl border-border/80 shadow-xs min-h-[85px] p-3" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-          <FormField
-            control={form.control}
-            name="nidNumber"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>NID Number</FormLabel>
-                <FormControl>
-                  <Input placeholder="Enter National ID number" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        <div className="flex justify-end pt-4">
-          <Button type="submit" disabled={isViewer || form.formState.isSubmitting}>
-            {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Adding...' : 'Add Customer'}
-          </Button>
-        </div>
+
+          <div className="flex justify-end pt-3 border-t border-border/50">
+            <Button
+              type="submit"
+              disabled={isViewer || form.formState.isSubmitting}
+              className="h-11 px-7 font-semibold rounded-xl shadow-md bg-primary hover:bg-primary/90 text-primary-foreground flex items-center justify-center gap-2"
+            >
+              {form.formState.isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Adding Customer...
+                </>
+              ) : isViewer ? (
+                'Read-Only (Viewer Access)'
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4" /> Add Customer
+                </>
+              )}
+            </Button>
+          </div>
       </form>
     </Form>
   );

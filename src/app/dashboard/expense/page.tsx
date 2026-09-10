@@ -25,8 +25,28 @@ import { useState, useEffect, useMemo } from 'react';
 import type { Project, Vendor, ExpenseItem, Expense, Counter } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { Separator } from '@/components/ui/separator';
-import { PlusCircle, Search, Ban, MoreHorizontal, Pencil, Trash2, Eye, Download, Receipt } from 'lucide-react';
+import {
+  PlusCircle,
+  Search,
+  Ban,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Eye,
+  Download,
+  Receipt,
+  Building2,
+  Truck,
+  Calendar,
+  Package,
+  Hash,
+  Coins,
+  CheckCircle2,
+  Loader2,
+  FileText,
+  ArrowRight,
+  ShieldCheck,
+} from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -135,23 +155,39 @@ function AddItemForm({ setDialogOpen }: { setDialogOpen: (open: boolean) => void
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-1">
         <FormField
           control={form.control}
           name="name"
           render={({ field }) => (
-            <FormItem>
-              <FormLabel>New Item Name</FormLabel>
+            <FormItem className="space-y-1.5">
+              <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                <Package className="h-3.5 w-3.5 text-primary" /> Item Name <span className="text-rose-500">*</span>
+              </FormLabel>
               <FormControl>
-                <Input placeholder="e.g., Steel Rods" {...field} />
+                <Input placeholder="e.g., Structural Steel Rods, Ready-mix Concrete" className="h-11 rounded-xl border-border/80 shadow-xs px-3.5" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
-        <div className="flex justify-end pt-4">
-          <Button type="submit" disabled={isViewer || form.formState.isSubmitting}>
-            {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Adding...' : 'Add Item'}
+        <div className="flex justify-end pt-3 border-t border-border/50">
+          <Button
+            type="submit"
+            disabled={isViewer || form.formState.isSubmitting}
+            className="h-11 px-6 rounded-xl font-semibold shadow-md bg-primary hover:bg-primary/90 text-primary-foreground flex items-center gap-2"
+          >
+            {form.formState.isSubmitting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Adding Item...
+              </>
+            ) : isViewer ? (
+              'Read-Only (Viewer Access)'
+            ) : (
+              <>
+                <PlusCircle className="h-4 w-4" /> Add Item
+              </>
+            )}
           </Button>
         </div>
       </form>
@@ -413,12 +449,22 @@ export default function AddExpensePage() {
     exportToCsv(dataToExport, `expenses_${new Date().toISOString().split('T')[0]}.csv`);
   };
 
+  const watchedPrice = form.watch('price') || 0;
+  const watchedQuantity = form.watch('quantity') || 1;
+  const watchedProjectId = form.watch('projectId');
+  const watchedVendorId = form.watch('vendorId');
+  const watchedItemId = form.watch('itemId');
+
+  const selectedProject = useMemo(() => projects?.find(p => p.id === watchedProjectId), [projects, watchedProjectId]);
+  const selectedVendor = useMemo(() => vendors?.find(v => v.id === watchedVendorId), [vendors, watchedVendorId]);
+  const selectedItem = useMemo(() => expenseItems?.find(i => i.id === watchedItemId), [expenseItems, watchedItemId]);
+
   return (
     <div className="space-y-6">
-        <Card className="border-border/60 shadow-sm">
-        <CardHeader className="pb-4">
-            <div className="flex items-center gap-2.5">
-              <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+        <Card className="border-border/60 shadow-sm overflow-hidden">
+        <CardHeader className="pb-4 border-b border-border/40 bg-muted/20">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-xs">
                 <Receipt className="h-5 w-5" />
               </div>
               <div>
@@ -429,140 +475,202 @@ export default function AddExpensePage() {
               </div>
             </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
             <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-                {/* Row 1: Project, Vendor, Date (3 Symmetrical Columns) */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-                  <FormField
-                    control={form.control}
-                    name="projectId"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Project</FormLabel>
-                        <FormControl>
-                          <Combobox
-                            className="h-10 w-full"
-                            options={projects?.map(p => ({ value: p.id, label: p.projectName })) || []}
-                            value={field.value}
-                            onChange={field.onChange}
-                            placeholder="Select a project"
-                            searchPlaceholder="Search projects..."
-                            emptyText="No projects found."
-                            disabled={projectsLoading}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="vendorId"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Vendor / Contractor</FormLabel>
-                        <FormControl>
-                          <Combobox
-                            className="h-10 w-full"
-                            options={vendors?.map(v => ({ value: v.id, label: v.vendorName })) || []}
-                            value={field.value}
-                            onChange={field.onChange}
-                            placeholder="Select a vendor"
-                            searchPlaceholder="Search vendors..."
-                            emptyText="No vendors found."
-                            disabled={vendorsLoading}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="date"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Expense Date</FormLabel>
-                        <FormControl>
-                          <Input type="date" className="h-10" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                {/* Row 2: Item with Quick Add, Quantity, Total Price (3 Symmetrical Columns) */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-                  <FormField
-                    control={form.control}
-                    name="itemId"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Expense Item</FormLabel>
-                        <div className="flex items-center gap-1.5 w-full">
-                          <FormControl className="flex-1 min-w-0">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                {/* Section 1: Project & Vendor Context (3 Symmetrical Columns) */}
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2 mb-3">
+                    <span className="h-5 w-5 rounded-full bg-primary/10 text-primary text-[11px] font-bold flex items-center justify-center">1</span>
+                    Project & Vendor Allocation
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                    <FormField
+                      control={form.control}
+                      name="projectId"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col justify-start space-y-1.5">
+                          <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                            <Building2 className="h-3.5 w-3.5 text-primary" /> Project <span className="text-rose-500">*</span>
+                          </FormLabel>
+                          <FormControl>
                             <Combobox
-                              className="h-10 w-full"
-                              options={expenseItems?.map(i => ({ value: i.id, label: i.name })) || []}
+                              className="h-11 w-full rounded-xl border-border/80 shadow-xs"
+                              options={projects?.map(p => ({ value: p.id, label: p.projectName })) || []}
                               value={field.value}
                               onChange={field.onChange}
-                              placeholder="Select an item"
-                              searchPlaceholder="Search items..."
-                              emptyText="No items found."
-                              disabled={itemsLoading}
+                              placeholder="Select a project"
+                              searchPlaceholder="Search projects..."
+                              emptyText="No projects found."
+                              disabled={projectsLoading}
                             />
                           </FormControl>
-                          <Dialog open={isAddItemDialogOpen} onOpenChange={setIsAddItemDialogOpen}>
-                            <DialogTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="h-10 w-10 shrink-0 border-dashed hover:border-primary hover:text-primary"
-                                title="Add new item type"
-                              >
-                                <PlusCircle className="h-4 w-4" />
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="sm:max-w-[425px]">
-                              <DialogHeader>
-                                <DialogTitle>Add New Expense Item</DialogTitle>
-                              </DialogHeader>
-                              <AddItemForm setDialogOpen={setIsAddItemDialogOpen} />
-                            </DialogContent>
-                          </Dialog>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
+                    <FormField
+                      control={form.control}
+                      name="vendorId"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col justify-start space-y-1.5">
+                          <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                            <Truck className="h-3.5 w-3.5 text-primary" /> Vendor / Contractor <span className="text-rose-500">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Combobox
+                              className="h-11 w-full rounded-xl border-border/80 shadow-xs"
+                              options={vendors?.map(v => ({ value: v.id, label: v.vendorName })) || []}
+                              value={field.value}
+                              onChange={field.onChange}
+                              placeholder="Select a vendor"
+                              searchPlaceholder="Search vendors..."
+                              emptyText="No vendors found."
+                              disabled={vendorsLoading}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="date"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col justify-start space-y-1.5">
+                          <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                            <Calendar className="h-3.5 w-3.5 text-primary" /> Expense Date <span className="text-rose-500">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input type="date" className="h-11 rounded-xl border-border/80 shadow-xs px-3.5" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
+                {/* Section 2: Itemization & Procurement Outflow (3 Symmetrical Columns) */}
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2 mb-3">
+                    <span className="h-5 w-5 rounded-full bg-primary/10 text-primary text-[11px] font-bold flex items-center justify-center">2</span>
+                    Itemization & Cost
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                    <FormField
+                      control={form.control}
+                      name="itemId"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col justify-start space-y-1.5">
+                          <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                            <Package className="h-3.5 w-3.5 text-primary" /> Expense Item <span className="text-rose-500">*</span>
+                          </FormLabel>
+                          <div className="flex items-center gap-2 w-full">
+                            <FormControl className="flex-1 min-w-0">
+                              <Combobox
+                                className="h-11 w-full rounded-xl border-border/80 shadow-xs"
+                                options={expenseItems?.map(i => ({ value: i.id, label: i.name })) || []}
+                                value={field.value}
+                                onChange={field.onChange}
+                                placeholder="Select an item"
+                                searchPlaceholder="Search items..."
+                                emptyText="No items found."
+                                disabled={itemsLoading}
+                              />
+                            </FormControl>
+                            <Dialog open={isAddItemDialogOpen} onOpenChange={setIsAddItemDialogOpen}>
+                              <DialogTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-11 w-11 rounded-xl shrink-0 border-dashed hover:border-primary hover:text-primary transition-colors"
+                                  title="Add new item type"
+                                >
+                                  <PlusCircle className="h-4 w-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-[425px]">
+                                <DialogHeader>
+                                  <DialogTitle>Add New Expense Item</DialogTitle>
+                                </DialogHeader>
+                                <AddItemForm setDialogOpen={setIsAddItemDialogOpen} />
+                              </DialogContent>
+                            </Dialog>
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="quantity"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col justify-start space-y-1.5">
+                          <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                            <Hash className="h-3.5 w-3.5 text-primary" /> Quantity (Units)
+                          </FormLabel>
+                          <FormControl>
+                            <Input type="number" min="1" placeholder="1" className="h-11 rounded-xl border-border/80 shadow-xs px-3.5" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="price"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col justify-start space-y-1.5">
+                          <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                            <Coins className="h-3.5 w-3.5 text-primary" /> Total Price ({currencySymbol}) <span className="text-rose-500">*</span>
+                          </FormLabel>
+                          <FormControl>
+                            <div className="relative flex items-center">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
+                                {currencySymbol}
+                              </span>
+                              <Input
+                                type="number"
+                                min="0"
+                                placeholder="0.00"
+                                className="h-11 pl-12 pr-3.5 rounded-xl border-border/80 shadow-xs font-semibold text-base"
+                                {...field}
+                              />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
+                {/* Section 3: Description & Memo */}
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2 mb-3">
+                    <span className="h-5 w-5 rounded-full bg-primary/10 text-primary text-[11px] font-bold flex items-center justify-center">3</span>
+                    Procurement Memo & Documentation
+                  </div>
                   <FormField
                     control={form.control}
-                    name="quantity"
+                    name="description"
                     render={({ field }) => (
-                      <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Quantity</FormLabel>
+                      <FormItem className="flex flex-col justify-start space-y-1.5">
+                        <FormLabel className="h-5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <FileText className="h-3.5 w-3.5 text-primary" /> Memo / Invoice Reference
+                        </FormLabel>
                         <FormControl>
-                          <Input type="number" min="1" placeholder="1" className="h-10" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="price"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col justify-start space-y-2">
-                        <FormLabel className="h-5 flex items-center">Total Price ({currencySymbol})</FormLabel>
-                        <FormControl>
-                          <Input type="number" min="0" placeholder="0" className="h-10" {...field} />
+                          <Input
+                            placeholder="Optional details (e.g., Foundation cement delivery batch #4, challan #882)"
+                            className="h-11 rounded-xl border-border/80 shadow-xs px-3.5"
+                            {...field}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -570,28 +678,53 @@ export default function AddExpensePage() {
                   />
                 </div>
 
-                {/* Row 3: Description / Memo */}
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col justify-start space-y-2">
-                      <FormLabel className="h-5 flex items-center">Description / Memo</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Optional details (e.g., Foundation cement bags delivery batch #4)"
-                          className="h-10"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {/* Live Telemetry Summary & Action Strip */}
+                <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0 shadow-xs">
+                      <Receipt className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+                        <span>Total Expense Commitment</span>
+                        {selectedProject && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-background border border-border">
+                            {selectedProject.projectName}
+                          </span>
+                        )}
+                        {selectedVendor && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-background border border-border">
+                            {selectedVendor.vendorName}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2 mt-0.5">
+                        <span className="text-primary">{formatCurrency(watchedPrice || 0)}</span>
+                        {watchedQuantity > 1 && watchedPrice > 0 && (
+                          <span className="text-xs font-normal text-muted-foreground">
+                            ({formatCurrency(Math.round((watchedPrice / watchedQuantity) * 100) / 100)} / unit)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
 
-                <div className="flex justify-end pt-2">
-                  <Button type="submit" disabled={isViewer || form.formState.isSubmitting} className="h-10 px-6 font-semibold shadow-sm">
-                    {isViewer ? 'Read-Only (Viewer Access)' : form.formState.isSubmitting ? 'Recording...' : 'Record Expense'}
+                  <Button
+                    type="submit"
+                    disabled={isViewer || form.formState.isSubmitting}
+                    className="h-11 px-8 rounded-xl font-semibold shadow-md bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto flex items-center justify-center gap-2"
+                  >
+                    {form.formState.isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> Recording Expense...
+                      </>
+                    ) : isViewer ? (
+                      'Read-Only (Viewer Access)'
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-4 w-4" /> Record Project Expense
+                      </>
+                    )}
                   </Button>
                 </div>
             </form>
@@ -608,14 +741,14 @@ export default function AddExpensePage() {
                             A record of all project expenses.
                         </CardDescription>
                     </div>
-                    <div className="flex flex-col sm:flex-row items-center gap-2">
+                    <div className="flex flex-col sm:flex-row items-center gap-2.5">
                         <DateRangePicker date={dateRange} onDateChange={setDateRange} />
                         <div className="relative w-full sm:w-auto">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input 
                                 type="search" 
                                 placeholder="Search by ID, vendor, project..."
-                                className="pl-8 sm:w-full lg:w-[300px] h-10"
+                                className="pl-9.5 sm:w-full lg:w-[320px] h-11 rounded-xl border-border/80 shadow-xs"
                                 value={searchQuery}
                                 onChange={(e) => {
                                     setSearchQuery(e.target.value);
@@ -623,8 +756,8 @@ export default function AddExpensePage() {
                                 }}
                             />
                         </div>
-                        <Button variant="outline" onClick={handleExport} className="w-full sm:w-auto h-10">
-                            <Download className="mr-2 h-4 w-4" />
+                        <Button variant="outline" onClick={handleExport} className="w-full sm:w-auto h-11 rounded-xl font-medium px-4 shadow-xs">
+                            <Download className="mr-2 h-4 w-4 text-muted-foreground" />
                             Export
                         </Button>
                     </div>
